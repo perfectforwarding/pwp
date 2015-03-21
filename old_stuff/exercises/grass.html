@@ -1,0 +1,291 @@
+
+<html>
+
+	<head>
+		<meta charset="utf-8" />
+		<title>Classic fire</title>
+
+		<!-- Matrix lib -->
+		<script type="text/javascript" src="utils.js"></script>
+		<!-- JQuery -->
+		<script type="text/javascript" src="jquery-2.0.2.js"></script>
+		<!-- TDL -->
+		<script type="text/javascript" src="tdl/base.js"></script>
+		
+
+		<script type="text/javascript">
+
+			tdl.require('tdl.buffers');
+			tdl.require('tdl.fast');
+			tdl.require('tdl.framebuffers');
+			tdl.require('tdl.fps');
+			tdl.require('tdl.log');
+			tdl.require('tdl.math');
+			tdl.require('tdl.models');
+			tdl.require('tdl.particles');
+			tdl.require('tdl.primitives');
+			tdl.require('tdl.programs');
+			tdl.require('tdl.textures');
+			tdl.require('tdl.webgl');
+
+			// globals
+			var canvas;					// the canvas
+			var gl;						// the gl context
+			var math;                 	// the math lib.
+			var fast;                 	// the fast math lib.
+			var g_debug = true;      	// whether or not to debug.
+			var g_log = true;  			// whether or not to
+
+			var g = {
+				grassConst: {},
+				dofConst: {},
+				globals: { showRT: 0 }
+			};
+
+			$(function()
+			{
+			  //setupFullscreen("fullscreen", "body");
+			  /*
+			  var uiElem = document.getElementById('ui');
+			  for (var ii = 0; ii < g_ui.length; ++ii) {
+			    var ui = g_ui[ii];
+			    var obj = g[ui.obj];
+			    obj[ui.name] = ui.value;
+			    var div = document.createElement('div');
+			    setupSlider($, div, ui, obj);
+			    uiElem.appendChild(div);
+			  }
+			  $(document).keypress(function(event) {
+			    if (event.keyCode == 'd'.charCodeAt(0) ||
+			        event.keyCode == 'D'.charCodeAt(0)) {
+			      g.globals.showRT = (g.globals.showRT + 1) % 5;
+			    }
+			  });
+				*/
+			  main();
+			});			
+
+			function main() 
+			{
+			  math = tdl.math;
+			  fast = tdl.fast;
+			  canvas = document.getElementById("canvas");
+			  g_fpsTimer = new tdl.fps.FPSTimer();
+
+			  //setupCountButtons();
+
+			  //canvas = WebGLDebugUtils.makeLostContextSimulatingCanvas(canvas);
+			  // tell the simulator when to lose context.
+			  //canvas.loseContextInNCalls(1);
+
+			  //tdl.webgl.registerContextLostHandler(canvas, handleContextLost);
+			  //tdl.webgl.registerContextRestoredHandler(canvas, handleContextRestored);
+
+			  gl = tdl.webgl.setupWebGL(canvas);
+			  if(!gl) 
+			  {
+			    return false;
+			  }
+			  if(g_debug) 
+			  {
+			    gl = tdl.webgl.makeDebugContext(gl, undefined, LogGLCall);
+			  }
+
+			  initialize();
+			}		
+
+			function initialize()
+			{
+				mainFBO = tdl.framebuffers.createFramebuffer(canvas.width, canvas.height, true);
+				tdl.log("--Setup Grass---------------------------------------");
+				var grass = setupGrass();				
+
+				Log("--Setup Skybox---------------------------------------");
+				// todo
+
+				Log("--Setup Blur Planea---------------------------------------");
+				// todo
+
+				Log("--Setup DofPlane---------------------------------------");
+				// todo
+
+				Log("--Setup RTPlane---------------------------------------");
+				// todo
+
+
+
+				var eyePosition = new Float32Array(3);
+  				var target = new Float32Array(3);
+  				var up = new Float32Array([0,1,0]);
+  				var world = new Float32Array(16);
+				var projection = new Float32Array(16);
+  				var view = new Float32Array(16);
+				var worldViewProjection = new Float32Array(16);
+				var worldInverse = new Float32Array(16);
+  				var worldInverseTranspose = new Float32Array(16);				
+
+				var grassPer =
+				{
+					world: world,
+					worldViewProjection: worldViewProjection,
+					worldInverse: worldInverse,
+					worldInverseTranspose: worldInverseTranspose					
+				};			
+
+				render();
+
+				return true;	
+
+
+			function render()
+			{
+				eyePosition[0] = 1;
+				eyePosition[1] = 1;
+				eyePosition[2] = 0;
+
+				target[0] = -1;
+				target[1] = 0;
+				target[2] = 0;
+
+				// Draw to main FBO
+				mainFBO.bind();				
+
+				gl.colorMask(true, true, true, true);
+				gl.clearColor(0, 0, 0, 0);
+				gl.clearDepth(1);
+				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+				gl.disable(gl.BLEND);
+				gl.depthFunc(gl.LESS);
+				gl.disable(gl.CULL_FACE);
+				gl.blendFunc(gl.SRCL_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+				fast.matrix4.perspective(projection, math.DegToRad(30), canvas.clientWidth / canvas.clientHeight, 1, 20);
+				fast.matrix4.lookAt(view, eyePosition, target, up);
+				fast.matrix4.mul(viewProjection, view, projection);
+
+				grass.drawPrep(g.grassConst);
+			}
+
+			function setupGrass()
+			{
+				var textures = {};
+				var program = tdl.programs.loadProgramFromScriptTags('grassVertexShader', 'grassFragmentShader');
+
+				var arrays = tdl.primitives.createPlane(1, 1, 1, 10);
+				tdl.primitives.reorient(
+					arrays,
+					[1, 0, 0, 0,
+					 0, 0, -1, 0,
+					 0, 1, 0, 0,
+					 0, 0.5, 0, 1]);
+				delete arrays.normal;
+				delete arrays.texCoord;
+				var numElements = arrays.position.numElements;
+
+				var blades = [arrays];
+				var across = 10;
+				for(var xx = 1; xx < across; ++xx)
+				{
+					var a2 = tdl.primitives.clone(arrays);
+					blades[xx] = a2;
+				}
+
+				var arrays = tdl.primitives.concat(blades);
+				var blades = [arrays];
+				for(var zz = 1; zz < across; ++zz)
+				{
+					var a2 = tdl.primitives.clone(arrays);
+					blades[zz] = arrays;
+				}
+
+				var arrays = tdl.primitives.concat(blades);
+				var numBlades = across * across;
+				var bladeId = new tdl.primitives.AttribBuffer(4, numElements * numBlades);
+				for(var xx = 0; xx < across; ++xx)
+				{
+					for(var zz = 0; zz < across; ++zz)
+					{
+						var r1 = Math.random();
+						var r2 = Math.random();
+						for(var jj = 0; jj < numElements; ++jj)
+						{
+							bladeId.push([xx, zz, r1, r2]);
+						}
+					}
+				}
+				arrays.bladeId = bladeId;
+				return new tdl.models.Model(program, arrays, textures);
+			}
+
+			function Log(msg)
+			{
+				if(g_log)
+				{
+					tdl.log(msg);
+				}
+			}
+
+			function LogGLCall(functionName, args) 
+			{
+			  if (g_log) 
+			  {
+			    ValidateNoneOfTheArgsAreUndefined(functionName, args)
+			    tdl.log("gl." + functionName + "(" +
+			            tdl.webgl.glFunctionArgsToString(functionName, args) + ")");
+			  }
+			}		
+
+			function ValidateNoneOfTheArgsAreUndefined(functionName, args) 
+			{
+			  for (var ii = 0; ii < args.length; ++ii) 
+			  {
+			    if (args[ii] === undefined) 
+			    {
+			      tdl.error("undefined passed to gl." + functionName + "(" + tdl.webgl.glFunctionArgsToString(functionName, args) + ")");
+			    }
+			  }
+			}				
+
+		</script>
+
+		<script id="grassVertexShader" type="text/something-not-javascript">
+
+			uniform mat4 worldViewProjection;
+
+			attribute vec4 position;
+			attribute vec4 bladeId;
+
+			void main()
+			{
+				gl_Position = worldViewProjection * position;
+			}
+
+		</script>
+
+		<script id="grassFragmentShader" type="text/something-not-javascript">
+
+			precision mediump float;
+			//varying vec4 v_color;
+
+			void main()
+			{
+				gl_FragColor = vec4(0, 1, 0, 1);
+			}
+
+		</script>
+	</head>
+
+	<body>
+		<div id="viewContainer">
+			<canvas id="canvas" width="1024" height="1024" style="width: 100%; height: 100%;"></canvas>
+		</div>		
+	</body>
+
+</html>
+
+
+
+
+
+

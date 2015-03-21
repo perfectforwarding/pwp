@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+	<head>
+
+		<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+  		<title>Mandelbrot 1</title>		
+
+		<style>
+		
+			body {
+		  		text-align: center;
+			}
+
+			canvas {
+		  		border: 1px black solid;
+			}
+
+		</style>
+
+		<!-- Additional libs -->
+		<script type="text/javascript" src="../lib/complex.js"></script>
+
+		<script type="text/javascript">
+
+			var globals = {};
+			globals.CPS = 2;
+			globals.ITERATIONS = 20;
+			globals.DELTA = 0.008;
+
+		    function main() 
+		    {
+		    	// Init canvas
+				globals.canvas = document.getElementById("canvas");
+				globals.canvas.ctx = globals.canvas.getContext('2d');
+				globals.canvas.ctx.fillStyle = "black";
+
+				initializeCoordSystem();
+				drawMandelbrot();
+				drawCoords();
+		    }
+
+		    function initializeCoordSystem()
+		    {
+		    	var ctx = globals.canvas.ctx;
+
+		    	ctx.translate(globals.canvas.width / 2, globals.canvas.height / 2);
+		    	ctx.scale(1 / globals.DELTA, -1 / globals.DELTA);		    	
+		    }
+
+		    function drawMandelbrot()
+		    {
+		    	for(var re = -globals.CPS; re < globals.CPS; re += globals.DELTA)
+		    	{
+		    		next_c_value:
+		    		for(var im = -globals.CPS; im < globals.CPS; im += globals.DELTA)
+		    		{
+		    			var z = new Complex(0, 0);
+		    			var c = new Complex(re, im);
+
+		    			for(var it = 0; it < globals.ITERATIONS; ++it)
+		    			{
+		    				z = c.add(z.square());
+		    				if(z.modulus() > 2)
+		    				{
+		    					continue next_c_value;
+		    				}
+		    			}
+
+		    			globals.canvas.ctx.fillRect(re, im, globals.DELTA, globals.DELTA);		    			
+		    		}
+		    	}
+		    }
+
+			function drawCoords()
+			{
+				var ctx = globals.canvas.ctx;
+
+				ctx.lineWidth = globals.DELTA;
+				ctx.strokeLine = "red";
+
+				// x-acis
+				ctx.beginPath();
+				ctx.moveTo(-globals.CPS, 0);
+				ctx.lineTo(globals.CPS, 0);
+				ctx.stroke();
+
+				// y-axis
+				ctx.beginPath();
+				ctx.moveTo(0, -globals.CPS);
+				ctx.lineTo(0, globals.CPS);
+				ctx.stroke();
+			}
+
+		</script>
+
+
+		<body onload="main();">
+			<canvas id="canvas" width="512" height="512">Your browser doen't support canvas</canvas>
+		</body>		
+
+	</head>
+</html>
