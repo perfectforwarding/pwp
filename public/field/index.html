@@ -1,0 +1,1243 @@
+
+<!DOCTYPE html>
+
+<html>
+	<head>
+		<title>Grass2</title>
+		<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+		<link href="style.css" rel="stylesheet" type="text/css"/>
+
+		<!-- Additional libs -->
+		<script type="text/javascript" src="../../lib/thrak/external/gl-matrix.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/external/webgl-utils.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/utils.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/camera.js"></script>
+		<script type="text/javascript" src="../../lib/dat-gui/dat.gui.min.js"></script>
+
+		<!-- Sky vertex shader -->
+		<script id="sky-vs" type="x-shader/x-vertex">
+			attribute vec2 aVertexPosition;
+			attribute vec2 aTextureCoord;			
+
+		    uniform mat4 uViewMatrix;
+		    uniform mat4 uProjMatrix;
+			uniform mat4 uInvProjMatrix;
+
+			varying vec2 vTextureCoord;
+
+			void main(void)
+			{
+				gl_Position = vec4(aVertexPosition, 0, 1);
+				vTextureCoord = aTextureCoord;
+			}						
+		</script>
+
+		<script id="sky-fs" type="x-shader/x-fragment">
+			precision mediump float;
+
+			varying vec2 vTextureCoord;
+
+			uniform vec3 uSunDir;
+			uniform vec3 uEyeDir;
+			uniform vec2 uResolution;
+
+			uniform vec2 uViewportScale;
+
+			void main(void)
+			{
+				//vec2 xy = (2.0 * (gl_FragCoord.xy / uResolution.xy)) - 1.0;
+				vec2 xy = gl_FragCoord.xy / uResolution.xy;
+				//xy *= uViewportScale;
+
+				vec3 skyColor = vec3(0.4,0.61,0.82);
+				vec3 horizonColor = vec3(0.7,0.81,0.85);
+				vec3 groundColor = vec3(0.2, 0.7, 0.2);				
+
+				// Map -1 -> 1, bottom to top
+				float x = (xy.y * 2.0) - 1.0;
+
+				//float topMix = (pow(2.0 * clamp(x, 0.0, 1.0) - 1.0, 3.0) + 1.0 ) / 2.0;
+				float topMix = pow(clamp(x, 0.0, 1.0), 0.5);
+				vec3 topColor = mix(horizonColor, skyColor, topMix);
+
+				float bottomMix = pow(clamp(-x, 0.0, 1.0), 0.5);
+				vec3 bottomColor = mix(horizonColor, groundColor, bottomMix);				
+
+				// Map 0 -> 2
+				x = xy.y * 2.0;
+
+				gl_FragColor = vec4(mix(bottomColor, topColor, floor(x)), 1.0);
+			}
+
+		</script>
+
+		<!-- Dof vertex shader -->
+		<script id="dof-vs" type="x-shader/x-vertex">
+			attribute vec2 aVertexPosition;
+			attribute vec2 aTextureCoord;
+
+			varying vec2 vTextureCoord;
+
+			void main(void)
+			{
+				gl_Position = vec4(aVertexPosition, 0, 1);
+				vTextureCoord = aTextureCoord;
+			}
+		</script>
+
+		<!-- Dof fragment shader -->
+		<script id="dof-fs" type="x-shader/x-fragment">
+			precision mediump float;
+
+			varying vec2 vTextureCoord;
+			uniform float uDofBegin;
+			uniform float uDofEnd;
+			uniform sampler2D uFullResTexture;
+			uniform sampler2D uLowResTexture;
+
+			void main(void)
+			{
+				vec4 hiResColor = texture2D(uFullResTexture, vTextureCoord);
+				vec4 loResColor = texture2D(uLowResTexture, vTextureCoord);
+				float mixval = clamp((hiResColor.a * 100.0 - uDofBegin) / (uDofEnd - uDofBegin), 0.0, 1.0);
+
+				gl_FragColor = vec4(mix(hiResColor.rgb, loResColor.rgb, mixval), 1.0);				
+				//gl_FragColor = vec4(hiResColor.a, hiResColor.a, hiResColor.a, 1.0);
+
+			}			
+		</script>			
+
+		<!-- Copy vertex shader -->
+		<script id="copy-vs" type="x-shader/x-vertex">
+			attribute vec2 aVertexPosition;
+			attribute vec2 aTextureCoord;
+
+			varying vec2 vTextureCoord;
+
+			void main(void)
+			{
+				gl_Position = vec4(aVertexPosition, 0, 1);
+				vTextureCoord = aTextureCoord;
+			}
+		</script>
+		
+		<!-- Quad Fragment shader -->
+		<script id="copy-fs" type="x-shader/x-fragment">
+			precision mediump float;
+
+			varying vec2 vTextureCoord;
+			uniform sampler2D uSampler;
+
+			void main(void)
+			{
+				gl_FragColor = texture2D(uSampler, vTextureCoord);
+			}
+		</script>
+
+		<!-- Blur vertex shader -->
+		<script id="blur-vs" type="x-shader/x-vertex">
+			attribute vec2 aVertexPosition;
+			attribute vec2 aTextureCoord;
+
+			varying vec2 vTextureCoord;
+
+			void main(void)
+			{
+				gl_Position = vec4(aVertexPosition, 0, 1);
+				vTextureCoord = aTextureCoord;
+			}
+		</script>
+		
+		<!-- Blur Fragment shader -->
+		<script id="blur_h-fs" type="x-shader/x-fragment">
+			precision mediump float;
+			
+			uniform sampler2D uSampler;
+			uniform float rtw;	// Render target width
+
+			varying vec2 vTextureCoord;
+
+			float offset[3];
+			float weight[3];
+
+			void main(void)
+			{
+				offset[0] = 0.0; offset[1] = 1.3846153846 / rtw; offset[2] = 3.2307692308 / rtw;
+				weight[0] = 0.2270270270; weight[1] = 0.3162162162; weight[2] = 0.0702702703;
+
+				vec3 tc = texture2D(uSampler, vTextureCoord).rgb * weight[0];
+				for(int i = 1; i < 3; ++i)
+				{
+					tc += texture2D(uSampler, vTextureCoord + vec2(offset[i], 0.0)).rgb * weight[i];
+					tc += texture2D(uSampler, vTextureCoord - vec2(offset[i], 0.0)).rgb * weight[i];
+				}
+
+				//gl_FragColor = texture2D(uSampler, vTextureCoord);
+				gl_FragColor = vec4(tc, 1.0);
+			}
+		</script>		
+
+		<!-- Blur Fragment shader -->
+		<script id="blur_v-fs" type="x-shader/x-fragment">
+			precision mediump float;
+			
+			uniform sampler2D uSampler;
+			uniform float rth;	// Render target height
+
+			varying vec2 vTextureCoord;
+
+			float offset[3];
+			float weight[3];
+
+			void main(void)
+			{
+				offset[0] = 0.0; offset[1] = 1.3846153846 / rth; offset[2] = 3.2307692308 / rth;
+				weight[0] = 0.2270270270; weight[1] = 0.3162162162; weight[2] = 0.0702702703;
+
+				vec3 tc = texture2D(uSampler, vTextureCoord).rgb * weight[0];
+				for(int i = 1; i < 3; ++i)
+				{
+					tc += texture2D(uSampler, vTextureCoord + vec2(0.0, offset[i])).rgb * weight[i];
+					tc += texture2D(uSampler, vTextureCoord - vec2(0.0, offset[i])).rgb * weight[i];
+				}
+
+				//gl_FragColor = texture2D(uSampler, vTextureCoord);
+				gl_FragColor = vec4(tc, 1.0);
+			}
+		</script>			
+
+		<script id="grass-vs" type="x-shader/x-vertex">
+		    attribute vec3 aVertexPosition;
+		    attribute vec4 aVertexExtra;
+
+		    uniform mat4 uWMatrix;
+		    uniform mat4 uMVMatrix;
+		    uniform mat4 uViewInvMatrix;
+		    uniform mat4 uPMatrix;
+		    uniform vec2 uGrassSpacing;
+		    uniform float uGrassWidth;
+		    uniform float uGrassHeight;
+		    uniform float uGrassHeightVariation;
+		    uniform float uTime;
+		    uniform float uSwayRange;
+		    uniform float uFreqAnim;
+		    uniform float uPeriodAnimX;
+		    uniform float uPeriodAnimZ;
+		    uniform vec3 uDarkColor;
+		    uniform vec3 uBrightColor;
+		    uniform vec3 uPatchRandom;
+
+		    varying vec4 vPosition;
+		    varying vec3 vColor;
+
+		    void main(void) 
+		    {
+		    	// Get random numbers
+		    	float r1 = mix(aVertexExtra.z, aVertexExtra.w, uPatchRandom.x);
+		    	float r2 = mix(aVertexExtra.z, aVertexExtra.w, uPatchRandom.y);
+		    	float r3 = mix(uPatchRandom.x, uPatchRandom.y, aVertexExtra.z);
+		    	float r4 = mix(uPatchRandom.x, uPatchRandom.y, aVertexExtra.w);
+
+		    	// Set grass width
+		    	vec4 pt = vec4(aVertexPosition, 1.0);
+		    	pt.x *= uGrassWidth;
+
+		    	// Billboarding
+				pt = uViewInvMatrix * pt;
+
+				// Set in position
+				pt.x += (uGrassSpacing.x * aVertexExtra.x) + ((r1 - 0.5) * uGrassSpacing.x);
+
+
+				pt.z += (uGrassSpacing.y * aVertexExtra.y) + ((r2 - 0.5) * uGrassSpacing.y);
+				pt.y *= uGrassHeight;
+				pt.y += aVertexPosition.y * uGrassHeightVariation * (r1 - 0.5);
+
+				pt.x += aVertexPosition.y * aVertexPosition.y * (pt.y / uGrassHeight) * (r4 - 0.5) * uGrassHeight / 3.0;				
+				pt.z += aVertexPosition.y * aVertexPosition.y * (pt.y / uGrassHeight) * (r3 - 0.5) * uGrassHeight / 3.0;				
+
+		        vec4 wp = uWMatrix * pt;
+				pt.y += sin(wp.x * 0.1) + cos(wp.z * 0.2) * 2.0;		//****				
+
+				float sway = aVertexPosition.y * aVertexPosition.y * uSwayRange;
+				//sway *= sway;
+				//sway = 0.0;
+
+				float r2h = (r2 + 1.0) * 0.5;
+				//float r2h = (r2 * 0.2) + 0.9;
+				float timeX = uTime * uFreqAnim;// * r2h;
+				float timeZ = uTime * uFreqAnim;// * r2h;
+
+		        //float r3h = (r3 + 1.0) * 0.5;
+		        float r3h = r3 * 2.0;
+				float periodX = wp.x * uPeriodAnimX * r3h;
+				float periodZ = wp.z * uPeriodAnimZ * r3h;
+
+				float r4h = (r4 + 1.0) * 0.5;
+				float sx = timeX + periodX;
+				float sz = timeZ + periodZ;
+				pt.x += (sin(sx) + (sin((r1 + sx) * 3.0) * 0.2 * r2)) * sway * r4h;
+				pt.z += (sin(sz) + (sin((r2 + sz) * 3.0) * 0.2 * r3)) * sway * r4h;
+				//pt.x += uTime;
+
+
+
+		        gl_Position = uPMatrix * uMVMatrix * pt;
+
+		        r1 = mod(r1 + wp.x * r2 + wp.z * r3, 2.0);
+		        r1 = abs(r1 - 1.0);
+
+  				//rand2 = mod(rand2 + wp.z * rand1Mult + wp.x * rand2Mult, 1.0);
+
+		        vColor.r = mix(uDarkColor.r, uBrightColor.r, r1);
+		        vColor.g = mix(uDarkColor.g, uBrightColor.g, r1);
+		        vColor.b = mix(uDarkColor.b, uBrightColor.b, r1);
+
+		        vPosition = gl_Position;
+		        vPosition.z /= 100.0;
+		    }
+		</script>
+
+		<script id="grass-fs" type="x-shader/x-fragment">
+    		precision mediump float;
+
+    		varying vec4 vPosition;
+    		varying vec3 vColor;
+
+    		void main(void) 
+    		{
+    			//float depth = (vPosition.z / vPosition.w);
+    			//float depth = gl_FragCoord.z;
+    			
+    			float depth = vPosition.z;
+				//depth = depth / 100.0;
+
+    			//gl_FragColor = vec4(depth, depth, depth, 1);
+        		gl_FragColor = vec4(vColor, depth);
+    		}
+		</script>
+
+		<script type="text/javascript">
+
+			var gl;
+			var grassShaderProgram, copyShaderProgram, hBlurShaderProgram, vBlurShaderProgram, dofShaderProgram, skyShaderProgram;
+			var modelMatrix = mat4.create();
+			var viewMatrix = mat4.create();
+			var viewInverseMatrix = mat4.create();
+    		var xSpeed = 0;
+    		var ySpeed = 0;
+    		var xRot = 30.0;
+    		var yRot = 0;
+    		var zLocation = -100;
+    		var lastTime = 0;
+    		var crateTexture;
+    		var currentlyPressedKeys = {};
+    		var grassPatch = {};
+    		var field = {};
+    		var timeStart = (new Date().getTime()) / 1000.0;
+    		var frameBuffer0, frameBuffer1, frameBuffer2;
+    		var fullScreenQuad = {};
+    		var gui;
+    		var menu;
+    		var dofBegin = 10;
+    		var dofEnd = 50;
+		    var camera = {};
+
+			function initGL(canvas)
+			{
+				try
+				{
+		    		canvas.width = window.innerWidth;
+		    		canvas.height = window.innerHeight;					
+
+					gl = canvas.getContext("webgl");
+					gl.viewportWidth = canvas.width;
+					gl.viewportHeight = canvas.height;
+				}
+				catch(e) {}
+
+				if(!gl)
+				{
+					throw "Failed initializing WebGL";
+				}
+			}
+
+			function initRenderTarget(pixels_width, pixels_height)
+			{
+				var renderBuffer = {};
+				renderBuffer.width = pixels_width;
+				renderBuffer.height = pixels_height;
+				// Create frame buffer				
+				renderBuffer.frameBuffer = gl.createFramebuffer();
+				// Set as active frame buffer
+				gl.bindFramebuffer(gl.FRAMEBUFFER, renderBuffer.frameBuffer);
+
+				// Create RGBA texture
+				renderBuffer.texture = gl.createTexture();
+				// Set as active texture
+				gl.bindTexture(gl.TEXTURE_2D, renderBuffer.texture);
+				// Set the params of the binded texture
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    			// The texture is going to be used as render target, so initialize with the same size of the framebuffer
+    			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, renderBuffer.width, renderBuffer.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+				// Create depth buffer
+				renderBuffer.depthBuffer = gl.createRenderbuffer();
+				// Set as active render buffer
+				gl.bindRenderbuffer(gl.RENDERBUFFER, renderBuffer.depthBuffer);
+				gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, renderBuffer.width, renderBuffer.height);
+
+				// Bind the texture to the frame buffer, to be used as color channel
+				gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, renderBuffer.texture, 0);
+				// Bind the depth buffer to the framebuffer
+				gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderBuffer.depthBuffer);
+
+				// Unbind
+				gl.bindTexture(gl.TEXTURE_2D, null);
+    			gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+    			gl.bindFramebuffer(gl.FRAMEBUFFER, null);		
+
+				console.log("Render target " + pixels_width + "x" + pixels_height + " created");
+
+    			return renderBuffer;		
+			}
+
+		    function initShaders() 
+		    {
+		    	// Init copy shader
+		    	//copyShaderProgram = linkShaderProgram(gl, getShader(gl, "copy-vs"), getShader(gl, "copy-fs"));
+		    	copyShaderProgram = createProgram(gl, compileShader(gl, getShaderSource("copy-vs"), gl.VERTEX_SHADER), compileShader(gl, getShaderSource("copy-fs"), gl.FRAGMENT_SHADER));
+		    	copyShaderProgram = linkShaderProgram(gl, getShader(gl, "copy-vs"), getShader(gl, "copy-fs"));
+		        copyShaderProgram.vertexPositionAttribute = gl.getAttribLocation(copyShaderProgram, "aVertexPosition");
+		        copyShaderProgram.textureCoordAttribute = gl.getAttribLocation(copyShaderProgram, "aTextureCoord");
+		        copyShaderProgram.texture = gl.getUniformLocation(copyShaderProgram, "uSampler");
+
+		        // Init horizontal blur shader program
+		        hBlurShaderProgram = linkShaderProgram(gl, getShader(gl, "blur-vs"), getShader(gl, "blur_h-fs"));
+		        hBlurShaderProgram.vertexPositionAttribute = gl.getAttribLocation(hBlurShaderProgram, "aVertexPosition");
+		        hBlurShaderProgram.textureCoordAttribute = gl.getAttribLocation(hBlurShaderProgram, "aTextureCoord");
+		        hBlurShaderProgram.texture = gl.getUniformLocation(hBlurShaderProgram, "uSampler");
+		        hBlurShaderProgram.rtw = gl.getUniformLocation(hBlurShaderProgram, "rtw");
+
+		        // Init vertical blur shader program
+		        vBlurShaderProgram = linkShaderProgram(gl, getShader(gl, "blur-vs"), getShader(gl, "blur_v-fs"));
+		        vBlurShaderProgram.vertexPositionAttribute = gl.getAttribLocation(vBlurShaderProgram, "aVertexPosition");
+		        vBlurShaderProgram.textureCoordAttribute = gl.getAttribLocation(vBlurShaderProgram, "aTextureCoord");
+		        vBlurShaderProgram.texture = gl.getUniformLocation(vBlurShaderProgram, "uSampler");
+		        vBlurShaderProgram.rth = gl.getUniformLocation(vBlurShaderProgram, "rth");
+
+		        // Init Dof shader
+		        dofShaderProgram = linkShaderProgram(gl, getShader(gl, "dof-vs"), getShader(gl, "dof-fs"));
+		        dofShaderProgram.vertexPositionAttribute = gl.getAttribLocation(dofShaderProgram, "aVertexPosition");
+		        dofShaderProgram.textureCoordAttribute = gl.getAttribLocation(dofShaderProgram, "aTextureCoord");
+		        dofShaderProgram.dofBegin = gl.getUniformLocation(dofShaderProgram, "uDofBegin");
+		        dofShaderProgram.dofEnd = gl.getUniformLocation(dofShaderProgram, "uDofEnd");
+		        dofShaderProgram.fullResTexture = gl.getUniformLocation(dofShaderProgram, "uFullResTexture");
+		        dofShaderProgram.lowResTexture = gl.getUniformLocation(dofShaderProgram, "uLowResTexture");
+
+		        // Init sky shader program
+		        skyShaderProgram = linkShaderProgram(gl, getShader(gl, "sky-vs"), getShader(gl, "sky-fs"));
+		        skyShaderProgram.vertexPositionAttribute = gl.getAttribLocation(skyShaderProgram, "aVertexPosition");
+		        skyShaderProgram.textureCoordAttribute = gl.getAttribLocation(skyShaderProgram, "aTextureCoord");
+		        skyShaderProgram.viewMatrix = gl.getUniformLocation(skyShaderProgram, "uViewMatrix");
+		        skyShaderProgram.projMatrix = gl.getUniformLocation(skyShaderProgram, "uProjMatrix");
+		        skyShaderProgram.invProjMatrix = gl.getUniformLocation(skyShaderProgram, "uInvProjMatrix");		        
+		        skyShaderProgram.sunDir = gl.getUniformLocation(skyShaderProgram, "uSunDir");
+		        skyShaderProgram.eyeDir = gl.getUniformLocation(skyShaderProgram, "uEyeDir");
+		        skyShaderProgram.resolution = gl.getUniformLocation(skyShaderProgram, "uResolution");
+		        skyShaderProgram.viewportScale = gl.getUniformLocation(skyShaderProgram, "uViewportScale");
+
+		    	// Init scene shader
+		        grassShaderProgram = linkShaderProgram(gl, getShader(gl, "grass-vs"), getShader(gl, "grass-fs"));
+
+		        grassShaderProgram.vertexPositionAttribute = gl.getAttribLocation(grassShaderProgram, "aVertexPosition");
+		        gl.enableVertexAttribArray(grassShaderProgram.vertexPositionAttribute);
+
+		        grassShaderProgram.vertexExtraAttribute = gl.getAttribLocation(grassShaderProgram, "aVertexExtra");
+		        gl.enableVertexAttribArray(grassShaderProgram.vertexExtraAttribute);
+
+		        grassShaderProgram.mMatrixUniform = gl.getUniformLocation(grassShaderProgram, "uWMatrix");
+		        grassShaderProgram.pMatrixUniform = gl.getUniformLocation(grassShaderProgram, "uPMatrix");
+		        grassShaderProgram.mvMatrixUniform = gl.getUniformLocation(grassShaderProgram, "uMVMatrix");
+		        grassShaderProgram.viewInverseMatrix = gl.getUniformLocation(grassShaderProgram, "uViewInvMatrix");
+		        grassShaderProgram.grassSpacingUniform = gl.getUniformLocation(grassShaderProgram, "uGrassSpacing");
+		        grassShaderProgram.grassWidthUniform = gl.getUniformLocation(grassShaderProgram, "uGrassWidth");
+		        grassShaderProgram.grassHeightUniform = gl.getUniformLocation(grassShaderProgram, "uGrassHeight");
+		        grassShaderProgram.grassHeightVariation = gl.getUniformLocation(grassShaderProgram, "uGrassHeightVariation");		        
+		        grassShaderProgram.timeUniform = gl.getUniformLocation(grassShaderProgram, "uTime");
+		        grassShaderProgram.swayRangeUniform = gl.getUniformLocation(grassShaderProgram, "uSwayRange");
+		        grassShaderProgram.freqAnimUniform = gl.getUniformLocation(grassShaderProgram, "uFreqAnim");
+		        grassShaderProgram.periodAnimXUniform = gl.getUniformLocation(grassShaderProgram, "uPeriodAnimX");
+		        grassShaderProgram.periodAnimZUniform = gl.getUniformLocation(grassShaderProgram, "uPeriodAnimZ");
+		        grassShaderProgram.darkColor = gl.getUniformLocation(grassShaderProgram, "uDarkColor");
+		        grassShaderProgram.brightColor = gl.getUniformLocation(grassShaderProgram, "uBrightColor");
+		        grassShaderProgram.patchRandom = gl.getUniformLocation(grassShaderProgram, "uPatchRandom");
+		    }	    
+
+			function initFullScreenQuad()
+			{
+				fullScreenQuad = new CreateFullScreenQuad(gl);
+			}
+
+			function initGrassPatch() 
+			{
+		    	grassPatch.grassHeight = 5.0;
+		    	grassPatch.grassHeightVariation = 10.0;
+		    	grassPatch.grassWidth = 0.1;
+		    	grassPatch.acrossX = 8;
+		    	grassPatch.acrossZ = 8;
+		    	grassPatch.spacingX = 0.5;
+		    	grassPatch.spacingZ = 0.5;
+		    	grassPatch.leafDivisions = 4;
+		    	grassPatch.swayRange = 0.5;
+		    	grassPatch.freqAnim = 2;
+		    	grassPatch.periodAnimX = 0.125;
+		    	grassPatch.periodAnimZ = 0.02;
+		    	grassPatch.darkColor = vec3.createFrom(0.0, 0.4, 0.0);
+		    	grassPatch.brightColor = vec3.createFrom(0.5, 1.0, 0.5);
+
+				updateGrassPatch();
+			}
+
+		    function updateGrassPatch() 
+		    {
+		    	grassPatch.sizeX = grassPatch.acrossX * grassPatch.spacingX;
+		    	grassPatch.sizeZ = grassPatch.acrossZ * grassPatch.spacingZ;
+
+		    	// Buffer subdivison
+		    	var subdivHeight = grassPatch.grassHeight / grassPatch.leafDivisions;
+		    	subdivHeight = 1.0 / grassPatch.leafDivisions;
+
+		        // Buffer para una unica hoja
+		        var vertices = [
+			       0.0,  0.0,  0.0,
+			       1.0,  0.0,  0.0,
+			       1.0,  subdivHeight,  0.0,
+			       0.0, subdivHeight,  0.0
+		        ];
+		        for(div = 1; div < grassPatch.leafDivisions; ++div)
+		        {
+		        	vertices.push(1.0);
+		        	vertices.push(subdivHeight * (div + 1));
+		        	vertices.push(0.0);
+
+		        	vertices.push(0.0);
+		        	vertices.push(subdivHeight * (div + 1));
+		        	vertices.push(0.0);
+		        }
+		        var nVerticesPerLeaf = vertices.length / 3;
+
+		        // Buffer para el patch de hojas
+		        var patchVertices = [];
+		        // Llenar el buffer en x
+		        for(var x = 0; x < grassPatch.acrossX; ++x)
+		        {
+		        	patchVertices.push.apply(patchVertices, vertices);
+		        }
+		        // Llenar el buffer en Z
+		        var tempVertices = patchVertices.slice();
+		        for(var z = 1; z < grassPatch.acrossZ; ++z)
+		        {
+		        	patchVertices.push.apply(patchVertices, tempVertices);
+		        }
+
+		        // Crear el buffer de webgl
+		        grassPatch.vb = gl.createBuffer();
+		        gl.bindBuffer(gl.ARRAY_BUFFER, grassPatch.vb);
+		        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(patchVertices), gl.STATIC_DRAW);
+		        grassPatch.vb.itemSize = 3;
+		        grassPatch.vb.numItems = patchVertices.length / 3;
+
+		        // info base
+		        var patchExtra = [];
+		        for(var z = 0; z < grassPatch.acrossZ; ++z)
+		        {
+		        	for(var x = 0; x < grassPatch.acrossX; ++x)
+		        	{
+		        		var r1 = Math.random();
+		        		var r2 = Math.random();
+		        		for(var nv = 0; nv < nVerticesPerLeaf; ++nv)
+		        		{
+			        		patchExtra.push(x);
+			        		patchExtra.push(z);
+			        		patchExtra.push(r1);
+			        		patchExtra.push(r2);
+		        		}
+		        	}
+		        }
+		        // Crear el buffer de webgl
+		        grassPatch.eb = gl.createBuffer();
+		        gl.bindBuffer(gl.ARRAY_BUFFER, grassPatch.eb);
+		        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(patchExtra), gl.STATIC_DRAW);
+		        grassPatch.eb.itemSize = 4;
+		        grassPatch.eb.numItems = patchExtra.length / 4;
+
+		        // Index buffer (solid)		        
+		        var indices = [ 
+			      0, 1, 2,
+			      0, 2, 3
+		        ];
+
+		        for(var div = 1; div < grassPatch.leafDivisions; ++div)
+		        {
+		        	var offset = (div * 2);
+
+		        	indices.push(1 + offset);
+		        	indices.push(offset);
+		        	indices.push(2 + offset);
+
+		        	indices.push(1 + offset);
+		        	indices.push(2 + offset);
+		        	indices.push(3 + offset);
+		        }
+
+		        var patchIndices = indices.slice();
+		        for(var x = 1; x < grassPatch.acrossX; ++x)
+		        {
+		        	for(var nindex = 0; nindex < indices.length; ++nindex)
+		        	{
+		        		indices[nindex] += nVerticesPerLeaf;
+		        	}
+		        	patchIndices.push.apply(patchIndices, indices);
+		        }
+		        var tempIndices = patchIndices.slice();
+		        for(var z = 1; z < grassPatch.acrossZ; ++z)
+		        {
+		        	for(var nindex = 0; nindex < tempIndices.length; ++nindex)
+		        	{
+		        		tempIndices[nindex] += grassPatch.acrossX * nVerticesPerLeaf;
+		        	}
+		        	patchIndices.push.apply(patchIndices, tempIndices);
+		        }
+
+		        grassPatch.ib = gl.createBuffer();
+		        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, grassPatch.ib);		        
+		        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(patchIndices), gl.STATIC_DRAW);
+		        grassPatch.ib.itemSize = 1;
+		        grassPatch.ib.numItems = patchIndices.length;
+
+		        // Index buffer (wireframe)
+		        indices = [0, 1, 1, 2, 2, 3, 3, 0];
+		        for(var div = 1; div < grassPatch.leafDivisions; ++div)
+		        {
+		        	var offset = (div - 1) * 2;
+
+		        	indices.push(2 + offset);
+		        	indices.push(4 + offset);
+
+		        	indices.push(4 + offset);
+		        	indices.push(5 + offset);
+
+		        	indices.push(5 + offset);
+		        	indices.push(3 + offset);
+		        }
+
+		        var patchIndices = indices.slice();
+		        for(var x = 1; x < grassPatch.acrossX; ++x)
+		        {
+		        	for(var nindex = 0; nindex < indices.length; ++nindex)
+		        	{
+		        		indices[nindex] += nVerticesPerLeaf;
+		        	}
+		        	patchIndices.push.apply(patchIndices, indices);
+		        }
+
+		        var tempIndices = patchIndices.slice();
+		        for(var z = 1; z < grassPatch.acrossZ; ++z)
+		        {
+		        	for(var nindex = 0; nindex < tempIndices.length; ++nindex)
+		        	{
+		        		tempIndices[nindex] += grassPatch.acrossX * nVerticesPerLeaf;
+		        	}
+		        	patchIndices.push.apply(patchIndices, tempIndices);
+		        }
+
+		        // Crear el index buffer de webgl
+		        grassPatch.wib = gl.createBuffer();
+		        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, grassPatch.wib);		        
+		        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(patchIndices), gl.STATIC_DRAW);
+		        grassPatch.wib.itemSize = 1;
+		        grassPatch.wib.numItems = patchIndices.length;
+		    }
+
+		    // A field is a quad of adjacent patches 
+			function updateField()
+			{
+		    	field.sizeX = field.patchesX * grassPatch.sizeX;
+		    	field.sizeZ = field.patchesZ * grassPatch.sizeZ;
+
+		    	field.worldMatrix = mat4.create();
+				mat4.identity(field.worldMatrix);
+		        mat4.translate(field.worldMatrix, [-field.sizeX / 2, 0.0, -field.sizeZ / 2]);		
+
+		        var patchSpacingX = grassPatch.acrossX * grassPatch.grassWidth;     	
+
+		        for(var x = 0; x < field.patchesX; ++x)
+		        {
+		        	field[x] = {};
+		        	for(var z = 0; z < field.patchesZ; ++z)
+		        	{
+		        		field[x][z] = {};
+		        		field[x][z].offset = vec3.createFrom(x * grassPatch.sizeX, 0.0, z * grassPatch.sizeZ);
+		        		field[x][z].patchRandom = vec3.createFrom(Math.random(), Math.random(), Math.random());
+		        	}
+		        }				
+			}
+
+		    function initField()
+		    {
+		    	field.patchesX = 16;
+		    	field.patchesZ = 16;
+
+		    	updateField();
+		    }
+
+		    // No used - just for future reference
+		    function initTextures()
+		    {
+/*		    	
+		    	crateTexture = gl.createTexture();
+		    	crateTexture.image = new Image();
+
+		    	crateTexture.image.onload = function()
+		    	{
+		    		handleLoadedTexture(crateTexture);
+		    	}
+
+		    	crateTexture.image.src = "../common/crate.gif";
+*/		    	
+		    }
+
+		    // Not used - just for future reference
+		    function handleLoadedTexture(texture)
+		    {
+		    	gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+		    	gl.bindTexture(gl.TEXTURE_2D, texture);
+		    	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.image);
+		    	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		    	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+		    	gl.generateMipmap(gl.TEXTURE_2D);
+
+		    	gl.bindTexture(gl.TEXTURE_2D, null);
+		    }
+
+			function initGui()
+			{
+		        var menu = 
+		        {
+		        	numPatchesX : field.patchesX,
+		        	numPatchesZ : field.patchesZ,
+		        	grassHeight : grassPatch.grassHeight,
+		        	grassHeightVariation : grassPatch.grassHeightVariation,
+		        	grassWidth : grassPatch.grassWidth,
+					spacingX : grassPatch.spacingX,
+		        	spacingZ : grassPatch.spacingZ,
+		        	swayRange : grassPatch.swayRange,
+		        	freqAnim : grassPatch.freqAnim,
+		        	darkColor : [grassPatch.darkColor[0] * 255.0, grassPatch.darkColor[1] * 255, grassPatch.darkColor[2] * 255],
+		        	brightColor : [grassPatch.brightColor[0] * 255.0, grassPatch.brightColor[1] * 255, grassPatch.brightColor[2] * 255],
+		        	mDofBegin : dofBegin,
+		        	mDofEnd : dofEnd
+		        }
+				
+				var gui = new dat.GUI();
+				gui.close();
+				
+				gui.add(menu, 'numPatchesX', 1, 64)
+					.step(1)
+					.onChange(
+						function(value)
+						{
+							field.patchesX = value;
+							updateField();
+						}
+					);
+				
+				gui.add(menu, 'numPatchesZ', 1, 64)
+					.step(1)
+					.onChange(
+						function(value)
+						{
+							field.patchesZ = value;
+							updateField();
+						}
+					);
+
+				gui.add(menu, 'grassHeight', 1, 50)
+				.step(1)
+				.onChange(
+					function(value)
+					{
+						grassPatch.grassHeight = value;
+					});
+
+				gui.add(menu, 'grassHeightVariation', 0, 50)
+				.step(1)
+				.onChange(
+					function(value)
+					{
+						grassPatch.grassHeightVariation = value;
+					});			
+
+				gui.add(menu, 'grassWidth', 0, 0.5)
+				.onChange(
+					function(value)
+					{
+						grassPatch.grassWidth = value;
+					})		
+
+				gui.add(menu, 'spacingX', 0.1, 2)
+				.onChange(
+					function(value)
+					{
+						grassPatch.spacingX = value;
+						updateGrassPatch();
+						updateField();
+					})		
+
+				gui.add(menu, 'spacingZ', 0.1, 2)
+				.onChange(
+					function(value)
+					{
+						grassPatch.spacingZ = value;
+						updateGrassPatch();
+						updateField();
+					})	
+
+				gui.add(menu, 'swayRange', 0, 5)
+				.onChange(
+					function(value)
+					{
+						grassPatch.swayRange = value;
+					})				
+
+				gui.add(menu, 'freqAnim', 0, 25)
+				.onChange(
+					function(value)
+					{
+						grassPatch.freqAnim = value;
+					})				
+
+				gui.addColor(menu, 'darkColor')
+				.onChange(
+					function(value)
+					{
+						grassPatch.darkColor[0] = value[0] / 255;
+						grassPatch.darkColor[1] = value[1] / 255;
+						grassPatch.darkColor[2] = value[2] / 255;
+					})
+
+				gui.addColor(menu, 'brightColor')
+				.onChange(
+					function(value)
+					{
+						grassPatch.brightColor[0] = value[0] / 255;
+						grassPatch.brightColor[1] = value[1] / 255;
+						grassPatch.brightColor[2] = value[2] / 255;
+					});
+
+				gui.add(menu, 'mDofBegin', 0, 100)
+				.onChange(
+					function(value)
+					{
+						dofBegin = value;
+					});
+
+				gui.add(menu, 'mDofEnd', 0, 100)
+				.onChange(
+					function(value)
+					{
+						dofEnd = value;
+					})						
+			}
+
+		    function drawField(renderTarget)
+		    {		    	
+		    	// Set the buffer for grass rendering as render target
+		    	// Setup viewport
+		    	if(renderTarget)
+		    	{
+		    		gl.bindFramebuffer(gl.FRAMEBUFFER, renderTarget.frameBuffer);		    		
+		    		gl.viewport(0, 0, renderTarget.width, renderTarget.height);
+		    	}
+		    	else
+		    	{
+		    		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+		    		gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+		    	}
+		    	// Clear render target
+		    	//gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		    	// Deth-test enabled
+		    	gl.enable(gl.DEPTH_TEST); 
+
+				// Use the shader for rendering grass
+		        gl.useProgram(grassShaderProgram);
+
+		        // setup projection matrix uniform
+		        gl.uniformMatrix4fv(grassShaderProgram.pMatrixUniform, false, camera.getProjectionMatrix());
+		        // get view matrix view matrix
+		        var viewMatrix = camera.getViewMatrix();
+
+		        // bind vertex buffer
+		        gl.bindBuffer(gl.ARRAY_BUFFER, grassPatch.vb);
+		        gl.vertexAttribPointer(grassShaderProgram.vertexPositionAttribute, grassPatch.vb.itemSize, gl.FLOAT, false, 12, 0);	
+		        // bind extra buffer
+		        gl.bindBuffer(gl.ARRAY_BUFFER, grassPatch.eb);
+		        gl.vertexAttribPointer(grassShaderProgram.vertexExtraAttribute, grassPatch.eb.itemSize, gl.FLOAT, false, 16, 0);
+		        // bind index buffer
+		        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, grassPatch.ib);
+		        //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, grassPatch.wib);		
+
+		        // Draw each patch
+		        for(var patchX = 0; patchX < field.patchesX; ++patchX)
+		        {
+		        	for(var patchZ = 0; patchZ < field.patchesZ; ++patchZ)
+		        	{
+				        // setup model matrix for the patch
+				        mat4.set(field.worldMatrix, modelMatrix);
+				        mat4.translate(modelMatrix, field[patchX][patchZ].offset);
+				        gl.uniformMatrix4fv(grassShaderProgram.mMatrixUniform, false, modelMatrix);
+
+						// setup model-view matrix for the patch
+						var modelViewMatrix = mat4.create();
+						mat4.multiply(viewMatrix, modelMatrix, modelViewMatrix);
+						gl.uniformMatrix4fv(grassShaderProgram.mvMatrixUniform, false, modelViewMatrix);
+
+						// inverse view matrix
+						mat4.toRotationMat(modelViewMatrix, viewInverseMatrix);
+						mat4.inverse(viewInverseMatrix);
+						// We want a rotation matrix only
+						viewInverseMatrix[4] = 0.0;
+						viewInverseMatrix[5] = 1.0;
+						viewInverseMatrix[6] = 0.0;
+						viewInverseMatrix[7] = 0.0;
+						gl.uniformMatrix4fv(grassShaderProgram.viewInverseMatrix, false, viewInverseMatrix);
+
+						// Set patch uniforms
+						gl.uniform2fv(grassShaderProgram.grassSpacingUniform, [grassPatch.spacingX, grassPatch.spacingZ]);
+						gl.uniform1f(grassShaderProgram.grassWidthUniform, grassPatch.grassWidth);
+						gl.uniform1f(grassShaderProgram.grassHeightUniform, grassPatch.grassHeight);
+						gl.uniform1f(grassShaderProgram.grassHeightVariation, grassPatch.grassHeightVariation);
+						gl.uniform1f(grassShaderProgram.freqAnimUniform, grassPatch.freqAnim);
+						gl.uniform1f(grassShaderProgram.periodAnimXUniform, grassPatch.periodAnimX);
+						gl.uniform1f(grassShaderProgram.periodAnimZUniform, grassPatch.periodAnimZ);
+						gl.uniform3fv(grassShaderProgram.darkColor, grassPatch.darkColor);
+						gl.uniform3fv(grassShaderProgram.brightColor, grassPatch.brightColor);
+						gl.uniform3fv(grassShaderProgram.patchRandom, field[patchX][patchZ].patchRandom);
+
+						var timeNow = (new Date().getTime()) / 1000.0;
+						gl.uniform1f(grassShaderProgram.timeUniform, timeNow - timeStart);
+
+						gl.uniform1f(grassShaderProgram.swayRangeUniform, grassPatch.swayRange);
+
+						// draw
+				        //gl.drawElements(gl.LINES, grassPatch.wib.numItems, gl.UNSIGNED_SHORT, 0);
+				        gl.drawElements(gl.TRIANGLES, grassPatch.ib.numItems, gl.UNSIGNED_SHORT, 0);
+		        	}		
+		        }		    	
+		    }
+
+		    function copyTexture(sourceTexture, renderTarget)
+		    {
+		    	// Set the render target
+		    	gl.bindFramebuffer(gl.FRAMEBUFFER, renderTarget.frameBuffer);
+		    	// Setup rendering viewport
+		    	gl.viewport(0, 0, renderTarget.width, renderTarget.height);
+		    	// Clear render target
+		    	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		    	// Disable depth test
+		    	gl.disable(gl.DEPTH_TEST); 
+		    	// Set the shader program for copy rendering
+        		gl.useProgram(copyShaderProgram);
+        		// Set the quad vb
+        		fullScreenQuad.apply(copyShaderProgram.vertexPositionAttribute, copyShaderProgram.textureCoordAttribute); 
+		        // Set the texture where the grass has been rendered
+				gl.uniform1i(copyShaderProgram.texture, 0);		        
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, sourceTexture);	
+
+				// Draw the quad
+		        gl.drawArrays(gl.TRIANGLES, 0, 6);	
+		    }
+
+		    function horizontalBlurTexture(sourceTexture, sourceTextureWith, renderTarget)
+		    {
+		    	// Set the render target
+		    	gl.bindFramebuffer(gl.FRAMEBUFFER, renderTarget.frameBuffer);
+		    	// Setup rendering viewport
+		    	gl.viewport(0, 0, renderTarget.width, renderTarget.height);
+		    	// Clear render target
+		    	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		    	// Disable depth test
+		    	gl.disable(gl.DEPTH_TEST); 
+		    	// Set the shader program for copy rendering
+        		gl.useProgram(hBlurShaderProgram);
+        		// Set the quad vb
+		        gl.bindBuffer(gl.ARRAY_BUFFER, fullScreenQuad.vb);
+		        gl.vertexAttribPointer(hBlurShaderProgram.vertexPositionAttribute, 2, gl.FLOAT, false, 4 * 4, 0);
+		        gl.vertexAttribPointer(hBlurShaderProgram.textureCoordAttribute, 2, gl.FLOAT, false, 4 * 4, 2 * 4);     
+		        // Set the texture where the grass has been rendered
+				gl.uniform1i(hBlurShaderProgram.texture, 0);		        
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, sourceTexture);	
+				// Set the remainig uniforms
+				gl.uniform1f(hBlurShaderProgram.rtw, sourceTextureWith);
+
+				// Draw the quad
+		        gl.drawArrays(gl.TRIANGLES, 0, 6);					
+		    }
+
+		    function verticalBlurTexture(sourceTexture, sourceTextureHeight, renderTarget)
+		    {
+		    	// Set the render target
+		    	gl.bindFramebuffer(gl.FRAMEBUFFER, renderTarget.frameBuffer);
+		    	// Setup rendering viewport
+		    	gl.viewport(0, 0, renderTarget.width, renderTarget.height);
+		    	// Clear render target
+		    	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		    	// Disable depth test
+		    	gl.disable(gl.DEPTH_TEST); 
+		    	// Set the shader program for copy rendering
+        		gl.useProgram(vBlurShaderProgram);
+        		// Set the quad vb
+        		fullScreenQuad.apply(vBlurShaderProgram.vertexPositionAttribute, vBlurShaderProgram.textureCoordAttribute);       
+		        // Set the texture where the grass has been rendered
+				gl.uniform1i(vBlurShaderProgram.texture, 0);		        
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, sourceTexture);	
+				// Set the remainig uniforms
+				gl.uniform1f(vBlurShaderProgram.rth, sourceTextureHeight);
+
+				// Draw the quad
+		        gl.drawArrays(gl.TRIANGLES, 0, 6);					
+		    }		    
+
+		    function renderDof(hiResTexture, loResTexture)
+		    {
+        		// Set the default render target
+        		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        		// Setup viewport
+		    	gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+		    	// Clear render target
+		    	//gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    
+		    	// Disable depth test
+		    	gl.disable(gl.DEPTH_TEST); 
+
+		    	// Set the shader program for quad rendering
+        		gl.useProgram(dofShaderProgram);		
+
+        		// Set the quad vb
+		        gl.bindBuffer(gl.ARRAY_BUFFER, fullScreenQuad.vb);
+		        gl.vertexAttribPointer(copyShaderProgram.vertexPositionAttribute, 2, gl.FLOAT, false, 4 * 4, 0);
+		        gl.vertexAttribPointer(copyShaderProgram.textureCoordAttribute, 2, gl.FLOAT, false, 4 * 4, 2 * 4);
+
+		        // Set the texture where the grass has been rendered
+		        gl.uniform1i(dofShaderProgram.fullResTexture, 0);
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, hiResTexture.texture);				
+				// Set the downsampled texture
+		        gl.uniform1i(dofShaderProgram.lowResTexture, 1);
+				gl.activeTexture(gl.TEXTURE1);
+				gl.bindTexture(gl.TEXTURE_2D, loResTexture.texture);
+
+				// Set dof params
+				gl.uniform1f(dofShaderProgram.dofBegin, dofBegin);
+				gl.uniform1f(dofShaderProgram.dofEnd, dofEnd);
+
+				// Draw the quad
+		        gl.drawArrays(gl.TRIANGLES, 0, 6);	   				    	
+		    }
+
+		    function drawSky()
+		    {
+        		// Set the default render target
+        		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        		// Setup viewport
+		    	gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+		    	// Clear render target
+		    	//gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    
+		    	// Disable depth test
+		    	gl.disable(gl.DEPTH_TEST); 		    	
+
+		    	// Set shader program
+		    	gl.useProgram(skyShaderProgram);
+
+		    	// Set quad vb
+		    	gl.bindBuffer(gl.ARRAY_BUFFER, fullScreenQuad.vb);
+		        gl.vertexAttribPointer(copyShaderProgram.vertexPositionAttribute, 2, gl.FLOAT, false, 4 * 4, 0);
+		        gl.vertexAttribPointer(copyShaderProgram.textureCoordAttribute, 2, gl.FLOAT, false, 4 * 4, 2 * 4);
+
+				// Set uniforms
+				gl.uniformMatrix4fv(skyShaderProgram.viewMatrix, false, camera.getViewMatrix());
+				gl.uniformMatrix4fv(skyShaderProgram.projMatrix, false, camera.getProjectionMatrix());
+				
+				var invProj = mat4.create();
+				mat4.inverse(camera.getProjectionMatrix(), invProj)
+				var vpScale = vec3.createFrom(1, 1, 0);
+				mat4.multiplyVec3(invProj, vpScale);
+				console.log(vpScale);
+
+				gl.uniformMatrix4fv(skyShaderProgram.invProjMatrix, false, invProj);				
+				gl.uniform3fv(skyShaderProgram.eyeDir, camera.getEyeDir());
+				gl.uniform3f(skyShaderProgram.sunDir, 1, 0, 0);
+				gl.uniform2f(skyShaderProgram.resolution, gl.viewportWidth, gl.viewportHeight);
+				gl.uniform2f(skyShaderProgram.viewportScale, vpScale[0], vpScale[1]);
+
+		        // Draw the quad
+		        gl.drawArrays(gl.TRIANGLES, 0, 6);
+		    }
+
+		    // Main draw function - Draw the field
+		    function drawScene() 
+		    {
+		    	drawSky();
+
+		    	drawField(null);
+/*
+		    	drawField(frameBuffer0);
+		    	horizontalBlurTexture(frameBuffer0.texture, frameBuffer0.width, frameBuffer1);
+		    	verticalBlurTexture(frameBuffer1.texture, frameBuffer0.height, frameBuffer2);
+        		renderDof(frameBuffer0, frameBuffer2);
+*/        		
+		    }
+
+		    // Update rotation values
+		    function animate()
+		    {
+		   		var timeNow = new Date().getTime();
+		   		var elapsed = (timeNow - lastTime) / 1000;
+		   		lastTime = timeNow;		   		
+		   		
+		   		xSpeed *= 1.0 - elapsed;
+		   		ySpeed *= 1.0 - elapsed;
+
+		   		xRot += xSpeed * elapsed;
+		   		yRot += ySpeed * elapsed;
+
+		   		camera.setLocation([0.0, 5.0, zLocation]);
+		   		camera.setLookAt([0.0, 0.0, 0.0]);
+
+		   		// update camera
+		    	camera.rotateEye(degToRad(xRot), [1, 0, 0]);
+		    	camera.rotateEye(degToRad(yRot), [0, 1, 0]);		    	
+		    }
+
+		    function handleKeyDown(event)
+		    {
+		    	currentlyPressedKeys[event.keyCode] = true;
+		    }
+
+		    function handleKeyUp(event)
+		    {
+				currentlyPressedKeys[event.keyCode] = false;
+		    }
+
+		    function handleKeys()
+		    {
+			    if (currentlyPressedKeys[33]) {
+			      // Page Up
+			      zLocation -= 0.05;
+			    }
+			    if (currentlyPressedKeys[34]) {
+			      // Page Down
+			      zLocation += 0.05;
+			    }
+			    if (currentlyPressedKeys[37]) {
+			      // Left cursor key
+			      ySpeed -= 1;
+			    }
+			    if (currentlyPressedKeys[39]) {
+			      // Right cursor key
+			      ySpeed += 1;
+			    }
+			    if (currentlyPressedKeys[38]) {
+			      // Up cursor key
+			      xSpeed -= 1;
+			    }
+			    if (currentlyPressedKeys[40]) {
+			      // Down cursor key
+			      xSpeed += 1;
+			    }		    	
+		    }
+
+		    function handleGui()
+		    {
+		    	/*
+		    	grassPatch.acrossX = menu.numPatchesX;
+		    	grassPatch.acrossZ = menu.numPatchesY;
+
+		    	console.log(grassPatch.acrossX);
+		    	*/
+		    }
+
+		    function tick()
+		    {
+		    	handleKeys();
+		    	handleGui();
+		    	animate();		    	
+		    	drawScene();
+
+		    	requestAnimFrame(tick);		    	
+		    }
+
+		    function main() 
+		    {
+		        var canvas = document.getElementById("canvas");
+		        initGL(canvas);
+		        //resizeCanvas();
+		        frameBuffer0 = initRenderTarget(canvas.width, canvas.height);
+		        frameBuffer1 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
+		        frameBuffer2 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
+		        initShaders();
+		        initFullScreenQuad();
+		        initGrassPatch();
+		        initField();
+		        initTextures();
+				if(!exists_url_part("preview")) {
+					initGui();
+				}		        
+
+		        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+		        gl.enable(gl.DEPTH_TEST);
+
+		        document.onkeydown = handleKeyDown;
+		        document.onkeyup = handleKeyUp;
+
+		    	// Setup camera
+		    	camera = new Camera([0.0, -5.0, zLocation], [0.0, 0.0, 0.0], [0.0, 0.1, 0.0], 45.0, gl.viewportWidth / gl.viewportHeight, 1.0, 1000.0);
+		    	camera.rotateEye(degToRad(30), [1, 0, 0]);
+
+		        tick();
+		    }
+
+		    function resizeCanvas()
+		    {
+		    	console.log("resize");
+		    	var canvas = document.getElementById("canvas");
+
+	    		canvas.width = window.innerWidth;
+	    		canvas.height = window.innerHeight;					
+
+				gl = canvas.getContext("webgl");
+				gl.viewportWidth = canvas.width;
+				gl.viewportHeight = canvas.height;
+
+		        frameBuffer0 = initRenderTarget(canvas.width, canvas.height);
+		        frameBuffer1 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
+		        frameBuffer2 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);    	
+		    }
+		</script>
+	</head>
+
+	<body onload="main();">
+		<canvas id="canvas" style="border: none" width="512" height="512">Your browser doen't support canvas</canvas>
+	</body>
+
+	<body onresize="resizeCanvas()">
+		<canvas id="grass">Your browser doen't support canvas</canvas>
+	</body>
+</html>
