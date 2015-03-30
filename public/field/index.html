@@ -55,18 +55,19 @@
 
 				// Map -1 -> 1, bottom to top
 				float x = (xy.y * 2.0) - 1.0;
+				x -= uEyeDir.y;
 
-				//float topMix = (pow(2.0 * clamp(x, 0.0, 1.0) - 1.0, 3.0) + 1.0 ) / 2.0;
-				float topMix = pow(clamp(x, 0.0, 1.0), 0.5);
+				//float topMix = pow(clamp(x, 0.0, 1.0), 0.5);
+				float topMix = clamp(pow(x, 0.5), 0.0, 1.0);
 				vec3 topColor = mix(horizonColor, skyColor, topMix);
 
 				float bottomMix = pow(clamp(-x, 0.0, 1.0), 0.5);
 				vec3 bottomColor = mix(horizonColor, groundColor, bottomMix);				
 
 				// Map 0 -> 2
-				x = xy.y * 2.0;
+				x += 1.0;
 
-				gl_FragColor = vec4(mix(bottomColor, topColor, floor(x)), 1.0);
+				gl_FragColor = vec4(mix(bottomColor, topColor, clamp(floor(x), 0.0, 1.0)), 1.0);
 			}
 
 		</script>
@@ -230,6 +231,41 @@
 		    varying vec4 vPosition;
 		    varying vec3 vColor;
 
+
+
+			#define MOD2 vec2(3.07965, 7.4235)
+
+			//--------------------------------------------------------------------------
+			// Noise functions...
+			float Hash( float p )
+			{
+				vec2 p2 = fract(vec2(p) / MOD2);
+			    p2 += dot(p2.yx, p2.xy+19.19);
+				return fract(p2.x * p2.y);
+			}
+
+			float Hash(vec2 p)
+			{
+				p  = fract(p / MOD2);
+			    p += dot(p.xy, p.yx+19.19);
+			    return fract(p.x * p.y);
+			}
+
+			float Noise( in vec2 x )
+			{
+			    vec2 p = floor(x);
+			    vec2 f = fract(x);
+			    f = f*f*(3.0-2.0*f);
+			    float n = p.x + p.y*57.0;
+			    float res = mix(mix( Hash(n+  0.0), Hash(n+  1.0),f.x),
+			                    mix( Hash(n+ 57.0), Hash(n+ 58.0),f.x),f.y);
+			    
+			    return res;
+			}
+
+
+			//--------------------------------------------------------------------------
+			// Main function
 		    void main(void) 
 		    {
 		    	// Get random numbers
@@ -257,7 +293,12 @@
 				pt.z += aVertexPosition.y * aVertexPosition.y * (pt.y / uGrassHeight) * (r3 - 0.5) * uGrassHeight / 3.0;				
 
 		        vec4 wp = uWMatrix * pt;
-				pt.y += sin(wp.x * 0.1) + cos(wp.z * 0.2) * 2.0;		//****				
+				//pt.y += sin(wp.x * 0.1) + cos(wp.z * 0.2) * 2.0;		//****		
+				float base = Noise(vec2(wp.x, wp.z) * 0.02) * 20.0;
+				float base2 = Noise(vec2(wp.x + 0.5, wp.z + 0.5) * 0.02) * 20.0; 
+
+				pt.y += base;
+				float shadow = (base2 - base) * 1.0;
 
 				float sway = aVertexPosition.y * aVertexPosition.y * uSwayRange;
 				//sway *= sway;
@@ -292,6 +333,8 @@
 		        vColor.r = mix(uDarkColor.r, uBrightColor.r, r1);
 		        vColor.g = mix(uDarkColor.g, uBrightColor.g, r1);
 		        vColor.b = mix(uDarkColor.b, uBrightColor.b, r1);
+
+		        vColor += shadow;
 
 		        vPosition = gl_Position;
 		        vPosition.z /= 100.0;
@@ -328,7 +371,7 @@
     		var ySpeed = 0;
     		var xRot = 30.0;
     		var yRot = 0;
-    		var zLocation = -100;
+    		var zLocation = -200;
     		var lastTime = 0;
     		var crateTexture;
     		var currentlyPressedKeys = {};
@@ -339,8 +382,8 @@
     		var fullScreenQuad = {};
     		var gui;
     		var menu;
-    		var dofBegin = 10;
-    		var dofEnd = 50;
+    		var dofBegin = 50;
+    		var dofEnd = 120;
 		    var camera = {};
 
 			function initGL(canvas)
@@ -689,8 +732,8 @@
 
 		    function initField()
 		    {
-		    	field.patchesX = 16;
-		    	field.patchesZ = 16;
+		    	field.patchesX = 64;
+		    	field.patchesZ = 64;
 
 		    	updateField();
 		    }
@@ -747,7 +790,7 @@
 				var gui = new dat.GUI();
 				gui.close();
 				
-				gui.add(menu, 'numPatchesX', 1, 64)
+				gui.add(menu, 'numPatchesX', 1, 256)
 					.step(1)
 					.onChange(
 						function(value)
@@ -757,7 +800,7 @@
 						}
 					);
 				
-				gui.add(menu, 'numPatchesZ', 1, 64)
+				gui.add(menu, 'numPatchesZ', 1, 256)
 					.step(1)
 					.onChange(
 						function(value)
@@ -840,14 +883,14 @@
 						grassPatch.brightColor[2] = value[2] / 255;
 					});
 
-				gui.add(menu, 'mDofBegin', 0, 100)
+				gui.add(menu, 'mDofBegin', 0, 200)
 				.onChange(
 					function(value)
 					{
 						dofBegin = value;
 					});
 
-				gui.add(menu, 'mDofEnd', 0, 100)
+				gui.add(menu, 'mDofEnd', 0, 200)
 				.onChange(
 					function(value)
 					{
@@ -870,7 +913,7 @@
 		    		gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
 		    	}
 		    	// Clear render target
-		    	//gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		    	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 		    	// Deth-test enabled
 		    	gl.enable(gl.DEPTH_TEST); 
 
@@ -1059,7 +1102,7 @@
         		// Setup viewport
 		    	gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
 		    	// Clear render target
-		    	//gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    
+		    	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    
 		    	// Disable depth test
 		    	gl.disable(gl.DEPTH_TEST); 		    	
 
@@ -1094,15 +1137,16 @@
 		    // Main draw function - Draw the field
 		    function drawScene() 
 		    {
-		    	drawSky();
+		    	//drawSky();
+		    	//drawField(null);
 
-		    	drawField(null);
-/*
 		    	drawField(frameBuffer0);
 		    	horizontalBlurTexture(frameBuffer0.texture, frameBuffer0.width, frameBuffer1);
-		    	verticalBlurTexture(frameBuffer1.texture, frameBuffer0.height, frameBuffer2);
+		    	verticalBlurTexture(frameBuffer1.texture, frameBuffer1.height, frameBuffer2);
+
+		    	drawSky();
         		renderDof(frameBuffer0, frameBuffer2);
-*/        		
+        		
 		    }
 
 		    // Update rotation values
@@ -1112,11 +1156,11 @@
 		   		var elapsed = (timeNow - lastTime) / 1000;
 		   		lastTime = timeNow;		   		
 		   		
-		   		xSpeed *= 1.0 - elapsed;
-		   		ySpeed *= 1.0 - elapsed;
-
 		   		xRot += xSpeed * elapsed;
 		   		yRot += ySpeed * elapsed;
+
+		   		xSpeed *= 1.0 - elapsed;
+		   		ySpeed *= 1.0 - elapsed;		   		
 
 		   		camera.setLocation([0.0, 5.0, zLocation]);
 		   		camera.setLookAt([0.0, 0.0, 0.0]);
@@ -1140,27 +1184,27 @@
 		    {
 			    if (currentlyPressedKeys[33]) {
 			      // Page Up
-			      zLocation -= 0.05;
+			      zLocation -= 0.5;
 			    }
 			    if (currentlyPressedKeys[34]) {
 			      // Page Down
-			      zLocation += 0.05;
+			      zLocation += 0.5;
 			    }
 			    if (currentlyPressedKeys[37]) {
 			      // Left cursor key
-			      ySpeed -= 1;
+			      ySpeed -= 2;
 			    }
 			    if (currentlyPressedKeys[39]) {
 			      // Right cursor key
-			      ySpeed += 1;
+			      ySpeed += 2;
 			    }
 			    if (currentlyPressedKeys[38]) {
 			      // Up cursor key
-			      xSpeed -= 1;
+			      xSpeed -= 2;
 			    }
 			    if (currentlyPressedKeys[40]) {
 			      // Down cursor key
-			      xSpeed += 1;
+			      xSpeed += 2;
 			    }		    	
 		    }
 
@@ -1190,8 +1234,8 @@
 		        initGL(canvas);
 		        //resizeCanvas();
 		        frameBuffer0 = initRenderTarget(canvas.width, canvas.height);
-		        frameBuffer1 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
-		        frameBuffer2 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
+		        frameBuffer1 = initRenderTarget(canvas.width / 2.0, canvas.height / 2.0);
+		        frameBuffer2 = initRenderTarget(canvas.width / 2.0, canvas.height / 2.0);
 		        initShaders();
 		        initFullScreenQuad();
 		        initGrassPatch();
@@ -1227,8 +1271,8 @@
 				gl.viewportHeight = canvas.height;
 
 		        frameBuffer0 = initRenderTarget(canvas.width, canvas.height);
-		        frameBuffer1 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
-		        frameBuffer2 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);    	
+		        frameBuffer1 = initRenderTarget(canvas.width / 2.0, canvas.height / 2.0);
+		        frameBuffer2 = initRenderTarget(canvas.width / 2.0, canvas.height / 2.0);    	
 		    }
 		</script>
 	</head>
