@@ -103,7 +103,7 @@
 				float mixval = clamp((hiResColor.a * 100.0 - uDofBegin) / (uDofEnd - uDofBegin), 0.0, 1.0);
 
 				gl_FragColor = vec4(mix(hiResColor.rgb, loResColor.rgb, mixval), 1.0);				
-				//gl_FragColor = vec4(hiResColor.a, hiResColor.a, hiResColor.a, 1.0);
+				//gl_FragColor = vec4(loResColor.r, loResColor.g, loResColor.b, 1.0);
 
 			}			
 		</script>			
@@ -913,7 +913,7 @@
 		    		gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
 		    	}
 		    	// Clear render target
-		    	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		    	//gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 		    	// Deth-test enabled
 		    	gl.enable(gl.DEPTH_TEST); 
 
@@ -1095,12 +1095,19 @@
 		        gl.drawArrays(gl.TRIANGLES, 0, 6);	   				    	
 		    }
 
-		    function drawSky()
+		    function drawSky(renderTarget)
 		    {
-        		// Set the default render target
-        		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        		// Setup viewport
-		    	gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+		    	if(renderTarget)
+		    	{
+		    		gl.bindFramebuffer(gl.FRAMEBUFFER, renderTarget.frameBuffer);		    		
+		    		gl.viewport(0, 0, renderTarget.width, renderTarget.height);
+		    	}
+		    	else
+		    	{
+		    		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+		    		gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+		    	}
+
 		    	// Clear render target
 		    	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    
 		    	// Disable depth test
@@ -1140,6 +1147,7 @@
 		    	//drawSky();
 		    	//drawField(null);
 
+				drawSky(frameBuffer0);
 		    	drawField(frameBuffer0);
 		    	horizontalBlurTexture(frameBuffer0.texture, frameBuffer0.width, frameBuffer1);
 		    	verticalBlurTexture(frameBuffer1.texture, frameBuffer1.height, frameBuffer2);
@@ -1234,8 +1242,8 @@
 		        initGL(canvas);
 		        //resizeCanvas();
 		        frameBuffer0 = initRenderTarget(canvas.width, canvas.height);
-		        frameBuffer1 = initRenderTarget(canvas.width / 2.0, canvas.height / 2.0);
-		        frameBuffer2 = initRenderTarget(canvas.width / 2.0, canvas.height / 2.0);
+		        frameBuffer1 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
+		        frameBuffer2 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
 		        initShaders();
 		        initFullScreenQuad();
 		        initGrassPatch();
@@ -1271,8 +1279,8 @@
 				gl.viewportHeight = canvas.height;
 
 		        frameBuffer0 = initRenderTarget(canvas.width, canvas.height);
-		        frameBuffer1 = initRenderTarget(canvas.width / 2.0, canvas.height / 2.0);
-		        frameBuffer2 = initRenderTarget(canvas.width / 2.0, canvas.height / 2.0);    	
+		        frameBuffer1 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
+		        frameBuffer2 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);    	
 		    }
 		</script>
 	</head>
