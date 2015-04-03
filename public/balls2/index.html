@@ -22,85 +22,25 @@
 		<script type="text/javascript" src="../../lib/thrak/utils.js"></script>
 		<script type="text/javascript" src="../../lib/thrak/shaders.js"></script>
 		<script type="text/javascript" src="../../lib/dat-gui/dat.gui.min.js"></script>		
-
-		<!-- vertex shader -->
-		<script id="mandelbrot-vs" type="x-shader/x-vertex">
-			attribute vec2 aVertexPosition;
-
-			void main(void)
-			{
-				gl_Position = vec4(aVertexPosition, 0, 1);
-			}
-		</script>
-		
-		<!-- fragment shader -->
-		<script id="mandelbrot-fs" type="x-shader/x-fragment">
-			precision lowp float;
-
-			const int MAX_ITERATIONS = 500;
-
-			uniform vec3 uResolution;
-			uniform int uIterations;
-			uniform float uZoom;
-			uniform vec2 uOffset;
-
-			void main(void)
-			{
-				vec2 uv = gl_FragCoord.xy / uResolution.xy;	
-				uv -= 0.5;
-				uv *= uZoom;				
-				uv += uOffset;
-				uv.y *= -uResolution.z;
-
-				vec2 c = uv;
-				vec2 z = c;
-
-				int num_iters = 15;
-				int iters = 0;			
-
-				for(int i = 0; i < MAX_ITERATIONS; ++i)
-				{
-					z = vec2(z.x * z.x  - z.y * z.y, 2.0 * z.x * z.y) + c;
-					if(dot(z, z) > 4.0)
-					{
-						break;
-					}
-					if(i > uIterations)
-					{
-						break;
-					}
-
-					//iters += 1.0;
-					++iters;
-				}
-
-				//iters /= MAX_ITERATIONS;
-				float color = sqrt(float(iters) / float(uIterations));
-
-
-				//gl_FragColor = vec4(iters, iters, iters, 1.0);
-				gl_FragColor = vec4(color, color, color, 1.0);
-			}
-		</script>
+		<script type="text/javascript" src="../../lib/thrak/external/gl-matrix.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/camera.js"></script>
 
 		<script type="text/javascript">
 
+			//--- Initialize globals
 			var globals = {};
+
+			globals.LIGHT_DIR = vec3.createFrom(-0.5, -1.0, 1.0);
+			vec3.normalize(globals.LIGHT_DIR);
+
+			//globals.camera = new Camera([0.0, 0.0, -5.0], [0.0, 0.0, 0.0], [0.0, 0.1, 0.0], 45.0, gl.viewportWidth / gl.viewportHeight, 1.0, 1000.0);
 			
-			globals.CPS = 2;
-			globals.ITERATIONS = 500;
-			globals.DELTA = 0.008;
-			globals.ZOOM = 5.0;
-			globals.OFFSET = [0, 0];
-
-			globals.mouseLeftDown = 0;
-			globals.mouseCursorLocation = { x : 0, y : 0 };
-
 		    function main() 
 		    {
 		    	initGL();
 				initShaders();
 				globals.quad = new CreateFullScreenQuad(globals.canvas.ctx);
+
 				if(!exists_url_part("preview")) {
 					initGui();
 				}
@@ -132,17 +72,26 @@
 			{
 				var gl = globals.canvas.ctx;
 
-				globals.shader = createProgram(gl, compileShader(gl, getShaderSource("mandelbrot-vs"), gl.VERTEX_SHADER), compileShader(gl, getShaderSource("mandelbrot-fs"), gl.FRAGMENT_SHADER));
+				loadShaderProgram(
+					gl, 
+					'balls.vs', 
+					'balls.fs',
+					function (shaderProgram) {
+						shaderProgram.aVertexPosition = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+						shaderProgram.uResolution = gl.getUniformLocation(shaderProgram, "uResolution");     
+						shaderProgram.uLightDir = gl.getUniformLocation(shaderProgram, "uLightDir");
 
-				globals.shader.aVertexPosition = gl.getAttribLocation(globals.shader, "aVertexPosition");
-				globals.shader.uResolution = gl.getUniformLocation(globals.shader, "uResolution");     
-				globals.shader.uIterations = gl.getUniformLocation(globals.shader, "uIterations");     
-				globals.shader.uZoom = gl.getUniformLocation(globals.shader, "uZoom");     
-				globals.shader.uOffset = gl.getUniformLocation(globals.shader, "uOffset");     
+				        globals.shader = shaderProgram;
+					},
+ 					function (msg) {
+				    	alert(msg);
+					}
+				);				
 			}
 
 			function initGui()
 			{
+/*
 		        var menu = 
 		        {
 		        	numIterations : globals.ITERATIONS / 2
@@ -163,11 +112,14 @@
 		        if(qparts.length > 0) {
 		        	console.log(qparts[0]);
 		        }
+*/		        
 			}
 
 		    function tick()
 		    {   	
-		    	drawScene();
+				if(loadShaderProgram.remainingPrograms == 0) {
+		    		drawScene();
+		    	}
 
 		    	requestAnimFrame(tick);		    	
 		    }	
@@ -190,9 +142,7 @@
         		globals.quad.apply(globals.shader.aVertexPosition); 	
 
 				gl.uniform3fv(globals.shader.uResolution, [globals.canvas.width, globals.canvas.height, globals.canvas.height / globals.canvas.width]);
-				gl.uniform1i(globals.shader.uIterations, globals.ITERATIONS);
-				gl.uniform1f(globals.shader.uZoom, globals.ZOOM);
-				gl.uniform2fv(globals.shader.uOffset, globals.OFFSET);
+				gl.uniform3fv(globals.shader.uLightDir, globals.LIGHT_DIR);
 
 				// Draw the quad
 		        gl.drawArrays(gl.TRIANGLES, 0, 6);		        		
@@ -206,21 +156,26 @@
 
 		    function onMouseDown(event)
 		    {
+/*		    	
 		    	//console.log("onmousedown " + event.pageX + ", " + event.pageY);
 		    	++globals.mouseLeftDown;
 
 		    	globals.mouseCursorLocation.x = event.pageX;
 		    	globals.mouseCursorLocation.y = event.pageY;
+*/		    	
 		    }
 
 		    function onMouseUp(event)
 		    {
+/*		    	
 		    	//console.log("onmouseup " + event.pageX + ", " + event.pageY);
 		    	--globals.mouseLeftDown;
+*/		    	
 		    }		    
 
 		    function onMouseMove(event)
 		    {
+/*		    	
 		    	if(globals.mouseLeftDown > 0)
 		    	{
 		    		//console.log("mousemove " + event.pageX + ", " + event.pageY);
@@ -236,12 +191,15 @@
 		    		globals.mouseCursorLocation.x = event.pageX;
 		    		globals.mouseCursorLocation.y = event.pageY;		    		
 		    	}
+*/		    	
 		    }
 
 		    function onMouseWheel(event)
 		    {		    	
+/*		    	
 		    	//console.log("mousewheel " + event.wheelDelta);
 		    	globals.ZOOM += globals.ZOOM * (event.wheelDelta / 120) / 25;
+*/		    	
 		    }
 
 		</script>
