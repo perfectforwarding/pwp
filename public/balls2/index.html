@@ -34,9 +34,11 @@
 			vec3.normalize(globals.LIGHT_DIR);
 
 			globals.mouseCursorLocation = { x : 0, y : 0 };
-			globals.mouseRotation = { x : 0, y : 0 };
 			globals.cameraRotation = { x : 0, y : 0 };
-			globals.mouseLeftDown = 0;
+			globals.cameraLookAt = vec3.createFrom(1.0, 0.0, 0.0);
+			globals.cameraOffset = -10.0;
+
+			globals.mouseDown = [0, 0, 0];
 			
 		    function main() 
 		    {
@@ -49,6 +51,21 @@
 				}
 
 				tick();
+		    }
+
+		    function updateCamera()
+		    {		    	
+				globals.camera = new Camera(
+					[globals.cameraLookAt[0], globals.cameraLookAt[1], globals.cameraLookAt[2] + globals.cameraOffset],  // location
+					globals.cameraLookAt, // look-at
+					[0.0, 1.0, 0.0], // up vector
+					45.0, // vfov
+					globals.canvas.ctx.viewportWidth / globals.canvas.ctx.viewportHeight, // aspect
+					1.0, // near
+					1000.0); // far
+
+				globals.camera.rotateEye(degToRad(globals.cameraRotation.y), [1, 0, 0]);		    	
+				globals.camera.rotateEye(degToRad(globals.cameraRotation.x), [0, 1, 0]);		    			    	
 		    }
 
 		    function initGL()
@@ -71,7 +88,7 @@
 				globals.canvas.addEventListener("mousewheel", onMouseWheel, false);		
 
 				// Initialize camera
-				globals.camera = new Camera([0.0, 0.0, 0.0], [0.0, 0.0, -5.0], [0.0, 0.1, 0.0], 45.0, globals.canvas.ctx.viewportWidth / globals.canvas.ctx.viewportHeight, 1.0, 1000.0);
+				updateCamera();
 		    }
 
 			function initShaders()
@@ -89,6 +106,7 @@
 						shaderProgram.uCamEye = gl.getUniformLocation(shaderProgram, "uCamEye");
 						shaderProgram.uCamFowward = gl.getUniformLocation(shaderProgram, "uCamFowward");
 						shaderProgram.uCamRight = gl.getUniformLocation(shaderProgram, "uCamRight");
+						shaderProgram.uCamUp = gl.getUniformLocation(shaderProgram, "uCamUp");
 						shaderProgram.uVFov = gl.getUniformLocation(shaderProgram, "uVFov");
 
 				        globals.shader = shaderProgram;
@@ -129,8 +147,7 @@
 		    {   	
 				if(loadShaderProgram.remainingPrograms == 0) {
 		    		
-					globals.camera = new Camera([0.0, 0.0, -10.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], 45.0, globals.canvas.ctx.viewportWidth / globals.canvas.ctx.viewportHeight, 1.0, 1000.0);
-					globals.camera.rotateEye(degToRad(globals.cameraRotation.x), [0, 1, 0]);		    	
+					updateCamera();
 
 		    		drawScene();
 		    	}
@@ -160,15 +177,9 @@
 				gl.uniform3fv(globals.shader.uResolution, [globals.canvas.width, globals.canvas.height, globals.canvas.height / globals.canvas.width]);
 				gl.uniform3fv(globals.shader.uLightDir, globals.LIGHT_DIR);
 				gl.uniform3fv(globals.shader.uCamEye, globals.camera.vecLocation);
-				console.log("eye " + globals.camera.vecLocation);
-				console.log("lootak " + globals.camera.vecLookAt);
-
 				gl.uniform3fv(globals.shader.uCamFowward, globals.camera.getForwardAxis());
-				console.log("forward " + vec3.str(globals.camera.getForwardAxis()));
-
 				gl.uniform3fv(globals.shader.uCamRight, globals.camera.getRightAxis());
-				console.log("right " + vec3.str(globals.camera.getRightAxis()));
-
+				gl.uniform3fv(globals.shader.uCamUp, globals.camera.getUpAxis());
 				gl.uniform1f(globals.shader.uVFov, globals.camera.vfov);
 
 				// Draw the quad
@@ -183,8 +194,7 @@
 
 		    function onMouseDown(event)
 		    {
-		    	//console.log("onmousedown " + event.pageX + ", " + event.pageY);
-		    	++globals.mouseLeftDown;
+		    	++globals.mouseDown[event.button];
 
 		    	globals.mouseCursorLocation.x = event.pageX;
 		    	globals.mouseCursorLocation.y = event.pageY;
@@ -192,26 +202,30 @@
 
 		    function onMouseUp(event)
 		    {
-		    	//console.log("onmouseup " + event.pageX + ", " + event.pageY);
-		    	--globals.mouseLeftDown;
+		    	--globals.mouseDown[event.button];
 		    }		    
 
 		    function onMouseMove(event)
 		    {
-		    	if(globals.mouseLeftDown > 0)
+				var mx = (event.pageX - globals.mouseCursorLocation.x) / globals.canvas.width;
+				var my = (event.pageY - globals.mouseCursorLocation.y) / globals.canvas.height;
+
+		    	if(globals.mouseDown[0] > 0)
 		    	{
-		    		console.log("mousemove " + event.pageX + ", " + event.pageY);
-					globals.mouseRotation.x = (event.pageX - globals.mouseCursorLocation.x) / globals.canvas.width;
-					globals.mouseRotation.y = (event.pageY - globals.mouseCursorLocation.y) / globals.canvas.height;
-
-		    		globals.mouseCursorLocation.x = event.pageX;
-		    		globals.mouseCursorLocation.y = event.pageY;		    		
-
-		    		globals.cameraRotation.x += globals.mouseRotation.x * 10.0;
-		    		console.log(globals.cameraRotation.x);
-
-
+		    		globals.cameraRotation.x += mx * 180.0;
+		    		globals.cameraRotation.y += my * 180.0;
 		    	}
+
+		    	if(globals.mouseDown[1] > 0)
+		    	{
+		    		
+
+		    		globals.cameraLookAt[0] += mx * 10.0;
+		    		globals.cameraLookAt[1] += my * 10.0;
+		    	}
+		    	
+		    	globals.mouseCursorLocation.x = event.pageX;
+		    	globals.mouseCursorLocation.y = event.pageY;		    				    	
 		    }
 
 		    function onMouseWheel(event)
