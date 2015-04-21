@@ -71,9 +71,9 @@ vec3 getNormal(vec3 p)
 // @out t distance from ro in rd direction to the mapped point
 // @out m material idx 
 
-void march(vec3 ro, vec3 rd, float maxt, out int i, out float t, out float m)
+void march(vec3 ro, vec3 rd, float mint, float maxt, out int i, out float t, out float m)
 {
-	t = 0.0;
+	t = mint;
 	m = -1.0;
 
 	for(int j = 0; j < STEPS; ++j)
@@ -81,7 +81,7 @@ void march(vec3 ro, vec3 rd, float maxt, out int i, out float t, out float m)
 		vec3 p = ro + rd * t;
 		vec2 d = map(p);
 		t += d.x;
-		//float d = udSphere(ro, rd, BALL_CENTER, BALL_RADIUS);
+
 		if(d.x < EPSILON)
 		{
 			i = j;
@@ -96,25 +96,25 @@ void march(vec3 ro, vec3 rd, float maxt, out int i, out float t, out float m)
 	}
 }
 
+void reflect(vec3 p, vec3 normal, out float t, out float m)
+{
+	int i;
+	march(p, normal, 0.001, SFAR, i, t, m);
+}
+
 float shadow(vec3 p, vec3 lightDir)
 {
-	vec3 ro = p - lightDir * SFAR;
-/*		
-	float t, m;
-	int i;
-	march(ro, lightDir, 100.0, i, t, m);
-	return t < (100.0 - 0.01) ? 0.0 : 1.0;
-*/	
-
+	vec3 ro = p;
+	vec3 rd = -lightDir;
+	
 	float sf = 1.0;
-	float t = 0.0;
+	float t = 0.001;
 	for(int i = 0; i < STEPS; ++i )
 	{
-		vec3 p = ro + lightDir * t;
+		vec3 p = ro + rd * t;
 		float h = map(p).x;
 		t += h;
-		//sf = min(sf, 8.0 * h / t);		
-		sf = min(sf, (SFAR - t) / SFAR);		
+		sf = min(sf, 8.0 * h / t);				
 		if(h < EPSILON || t >= SFAR)
 		{
 			break;
@@ -124,13 +124,39 @@ float shadow(vec3 p, vec3 lightDir)
 	return clamp(sf, 0.0, 1.0);
 }
 
+float checker_mat(vec3 p)
+{
+	float cx = sign(mod(p.x * 2.0, 2.0) - 1.0);
+	float cy = sign(mod(p.y * 2.0, 2.0) - 1.0);
+	float cz = sign(mod(p.z * 2.0, 2.0) - 1.0);
+	
+	return cy * cx * cz;
+}
+
+void mat_color(vec3 p, vec3 normal, float m, out vec3 color)
+{
+	if(m == 1.0)
+	{
+		color = vec3(checker_mat(p));
+	}
+	else if(m == 2.0)
+	{
+		float t;
+		reflect(p, normal, t, m);
+	}
+	else
+	{
+		color = vec3(0.5, 0.2, cos(m)) * (sin(m * 0.5) + 0.3);		
+	}
+}
+
 vec3 computeColor(vec3 ro, vec3 rd)
 {
 	vec3 color = vec3(0.1, 0.1, 0.2);
 
 	float t, m;
 	int i;	
-	march(ro, rd, ZFAR, i, t, m);
+	march(ro, rd, 0.0, ZFAR, i, t, m);
 
 	if(m >= 0.0)
 	{
@@ -138,18 +164,13 @@ vec3 computeColor(vec3 ro, vec3 rd)
 		vec3 p = ro + rd * t;
 		// shadow
 		float s = shadow(p, uLightDir);
+		// Catch normal
+		vec3 normal = getNormal(p);
 
 		// Calc mat color
-		float cx = sign(mod(p.x * 2.0, 2.0) - 1.0);
-		float cy = sign(mod(p.y * 2.0, 2.0) - 1.0);
-		float cz = sign(mod(p.z * 2.0, 2.0) - 1.0);
-		color = vec3(cy * cx * cz);
-
-		color = vec3(0.5, 0.2, cos(m)) * (sin(m * 0.5) + 0.3);
-
+		mat_color(p, normal, m, color);		
 
 		// Lit
-		vec3 normal = getNormal(p); // surface normal
 		vec3 H = normalize(uLightDir + rd); // half vector
 
 		color *= vec3(max(-dot(normal, uLightDir), 0.0)); // diffuse
