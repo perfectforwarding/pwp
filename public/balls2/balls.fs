@@ -21,7 +21,7 @@ const vec3 CAM_UP = vec3(0.0, 1.0, 0.0);
 const vec3 BALL_CENTER = vec3(0.0, 0.0, 0.0);
 const float BALL_RADIUS = 1.0;
 
-const vec3 BOX_CENTER = vec3(-5.0, 0.0, 5.0);
+const vec3 BOX_CENTER = vec3(3.0, 0.0, 0.0);
 const vec3 BOX_HALF_EXTENTS = vec3(1.0, 1.0, 1.0);
 
 const vec4 PLANE_F = vec4(0.0, 1.0, 0.0, -1.0);
@@ -96,12 +96,6 @@ void march(vec3 ro, vec3 rd, float mint, float maxt, out int i, out float t, out
 	}
 }
 
-void reflect(vec3 p, vec3 normal, out float t, out float m)
-{
-	int i;
-	march(p, normal, 0.001, SFAR, i, t, m);
-}
-
 float shadow(vec3 p, vec3 lightDir)
 {
 	vec3 ro = p;
@@ -135,18 +129,19 @@ float checker_mat(vec3 p)
 
 void mat_color(vec3 p, vec3 normal, float m, out vec3 color)
 {
-	if(m == 1.0)
+	color = vec3(0.1, 0.1, 0.2);
+
+	if(m == 0.0)
+	{
+		color = vec3(0.5, 0.2, cos(m)) * (sin(m * 0.5) + 0.3);		
+	}
+	else if(m == 1.0)
 	{
 		color = vec3(checker_mat(p));
 	}
 	else if(m == 2.0)
 	{
-		float t;
-		reflect(p, normal, t, m);
-	}
-	else
-	{
-		color = vec3(0.5, 0.2, cos(m)) * (sin(m * 0.5) + 0.3);		
+		color = vec3(0.0);
 	}
 }
 
@@ -168,6 +163,10 @@ vec3 computeColor(vec3 ro, vec3 rd)
 		vec3 normal = getNormal(p);
 
 		// Calc mat color
+		if(m == 2.0)
+		{
+			march(p, normal, 0.001, SFAR, i, t, m);
+		}
 		mat_color(p, normal, m, color);		
 
 		// Lit
