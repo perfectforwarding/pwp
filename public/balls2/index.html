@@ -3,7 +3,7 @@
 	<head>
 
 		<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
-  		<title>Mandelbrot 1</title>		
+  		<title>Balls to the walls</title>		
 
 		<style>
 		
@@ -24,6 +24,7 @@
 		<script type="text/javascript" src="../../lib/dat-gui/dat.gui.min.js"></script>		
 		<script type="text/javascript" src="../../lib/thrak/external/gl-matrix.js"></script>
 		<script type="text/javascript" src="../../lib/thrak/camera.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/keyboard.js"></script>
 
 		<script type="text/javascript">
 
@@ -40,6 +41,11 @@
 
 			globals.mouseDown = [0, 0, 0];
 			
+			function onKeyForward()
+			{
+				console.log("hurra!");
+			}
+
 		    function main() 
 		    {
 		    	initGL();
@@ -47,6 +53,8 @@
 				globals.quad = new CreateFullScreenQuad(globals.canvas.ctx);
 
 				if(!exists_url_part("preview")) {
+					keyboard.Initialize();
+					keyboard.RegisterPressEvent(87, onKeyForward);
 					initGui();
 				}
 
