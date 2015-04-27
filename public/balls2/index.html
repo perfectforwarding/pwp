@@ -38,13 +38,39 @@
 			globals.cameraRotation = { x : 0, y : 0 };
 			globals.cameraLookAt = vec3.createFrom(1.0, 0.0, 0.0);
 			globals.cameraOffset = -10.0;
+			globals.cameraMovement = vec3.create();
 
 			globals.mouseDown = [0, 0, 0];
+
+			globals.lastTime = 0;
 			
 			function onKeyForward()
 			{
-				console.log("hurra!");
+				var axis = globals.camera.getForwardAxis();
+				axis[1] = 0.0;
+				vec3.normalize(axis);				
+				return axis;
 			}
+			function onKeyBackward()
+			{
+				var axis = onKeyForward();
+				vec3.scale(axis, -1);
+				return axis;
+			}			
+			function onKeyRight()
+			{
+				var axis = globals.camera.getRightAxis();
+				axis[1] = 0.0;
+				vec3.normalize(axis);				
+				return axis;
+			}				
+			function onKeyLeft()
+			{
+				var axis = onKeyRight();
+				vec3.scale(axis, -1);
+				return axis;
+			}			
+		
 
 		    function main() 
 		    {
@@ -52,17 +78,42 @@
 				initShaders();
 				globals.quad = new CreateFullScreenQuad(globals.canvas.ctx);
 
-				if(!exists_url_part("preview")) {
+				if(!exists_url_part("preview")) 
+				{
 					keyboard.Initialize();
-					keyboard.RegisterPressEvent(87, onKeyForward);
+					keyboard.TrackState(keyboard.key_code.w);
+					keyboard.TrackState(keyboard.key_code.s);
+					keyboard.TrackState(keyboard.key_code.a);
+					keyboard.TrackState(keyboard.key_code.d);
 					initGui();
 				}
 
 				tick();
 		    }
 
-		    function updateCamera()
-		    {		    	
+		    function updateCamera(elapsed)
+		    {
+		    	var movement = vec3.create();
+		    	if(keyboard.IsPressed(keyboard.key_code.w))
+		    	{
+					vec3.add(movement, onKeyForward());
+		    	}
+		    	if(keyboard.IsPressed(keyboard.key_code.s))
+		    	{
+					vec3.add(movement, onKeyBackward());
+		    	}		    	
+		    	if(keyboard.IsPressed(keyboard.key_code.d))
+		    	{
+					vec3.add(movement, onKeyRight());
+		    	}		    			    	
+		    	if(keyboard.IsPressed(keyboard.key_code.a))
+		    	{
+					vec3.add(movement, onKeyLeft());
+		    	}		    			    			    	
+
+		    	vec3.scale(movement, elapsed * 5);
+		    	vec3.add(globals.cameraLookAt, movement);
+
 				globals.camera = new Camera(
 					[globals.cameraLookAt[0], globals.cameraLookAt[1], globals.cameraLookAt[2] + globals.cameraOffset],  // location
 					globals.cameraLookAt, // look-at
@@ -96,7 +147,7 @@
 				globals.canvas.addEventListener("mousewheel", onMouseWheel, false);		
 
 				// Initialize camera
-				updateCamera();
+				//updateCamera();
 		    }
 
 			function initShaders()
@@ -152,10 +203,16 @@
 			}
 
 		    function tick()
-		    {   	
+		    { 
+		   		var timeNow = new Date().getTime();
+		   		var elapsed = (timeNow - globals.lastTime) / 1000;
+		   		globals.lastTime = timeNow;
+
 				if(loadShaderProgram.remainingPrograms == 0) {
 		    		
-					updateCamera();
+					keyboard.Update();
+
+					updateCamera(elapsed);
 
 		    		drawScene();
 		    	}
@@ -225,9 +282,7 @@
 		    	}
 
 		    	if(globals.mouseDown[1] > 0)
-		    	{
-		    		
-
+		    	{		    		
 		    		globals.cameraLookAt[0] += mx * 10.0;
 		    		globals.cameraLookAt[1] += my * 10.0;
 		    	}
