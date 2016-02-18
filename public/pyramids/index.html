@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+	<head>
+
+		<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+  		<title>Balls to the walls</title>		
+
+		<style>
+		
+		html, body {
+		    width: 100%;
+		    height: 100%;
+		    margin: 0px;
+		    border: 0;
+		    overflow: hidden; /*  Disable scrollbars */
+		    display: block;  /* No floating content on sides */
+		}
+
+		</style>
+
+		<!-- Additional libs -->
+		<script type="text/javascript" src="../../lib/thrak/utils.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/shaders.js"></script>
+		<script type="text/javascript" src="../../lib/dat-gui/dat.gui.min.js"></script>		
+		<script type="text/javascript" src="../../lib/thrak/external/gl-matrix.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/camera.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/keyboard.js"></script>
+
+		<script type="text/javascript">
+
+			//--- Initialize globals
+			var globals = {};
+
+			globals.LIGHT_DIR = vec3.createFrom(-0.5, -1.0, 1.0);
+			vec3.normalize(globals.LIGHT_DIR);
+
+			globals.mouseCursorLocation = { x : 0, y : 0 };
+			globals.cameraRotation = { x : 0, y : 0 };
+			globals.cameraLookAt = vec3.createFrom(1.0, 0.0, 0.0);
+			globals.cameraOffset = -10.0;
+			globals.cameraMovement = vec3.create();
+
+			globals.mouseDown = [0, 0, 0];
+
+			globals.lastTime = 0;
+			globals.elapsedTime = 0;
+			globals.currentTime = 0;
+			
+			function onKeyForward()
+			{
+				var axis = globals.camera.getForwardAxis();
+				axis[1] = 0.0;
+				vec3.normalize(axis);				
+				return axis;
+			}
+			function onKeyBackward()
+			{
+				var axis = onKeyForward();
+				vec3.scale(axis, -1);
+				return axis;
+			}			
+			function onKeyRight()
+			{
+				var axis = globals.camera.getRightAxis();
+				axis[1] = 0.0;
+				vec3.normalize(axis);				
+				return axis;
+			}				
+			function onKeyLeft()
+			{
+				var axis = onKeyRight();
+				vec3.scale(axis, -1);
+				return axis;
+			}			
+		
+
+		    function main() 
+		    {
+		    	initGL();
+				initShaders();
+				globals.quad = new CreateFullScreenQuad(globals.canvas.ctx);
+
+				if(!exists_url_part("preview")) 
+				{
+					keyboard.Initialize();
+					keyboard.TrackState(keyboard.key_code.w);
+					keyboard.TrackState(keyboard.key_code.s);
+					keyboard.TrackState(keyboard.key_code.a);
+					keyboard.TrackState(keyboard.key_code.d);
+					initGui();
+				}
+
+				tick();
+		    }
+
+		    function updateCamera(elapsed)
+		    {
+		    	var movement = vec3.create();
+		    	if(keyboard.IsPressed(keyboard.key_code.w))
+		    	{
+					vec3.add(movement, onKeyForward());
+		    	}
+		    	if(keyboard.IsPressed(keyboard.key_code.s))
+		    	{
+					vec3.add(movement, onKeyBackward());
+		    	}		    	
+		    	if(keyboard.IsPressed(keyboard.key_code.d))
+		    	{
+					vec3.add(movement, onKeyRight());
+		    	}		    			    	
+		    	if(keyboard.IsPressed(keyboard.key_code.a))
+		    	{
+					vec3.add(movement, onKeyLeft());
+		    	}		    			    			    	
+
+		    	vec3.scale(movement, elapsed * 5);
+		    	vec3.add(globals.cameraLookAt, movement);
+
+				globals.camera = new Camera(
+					[globals.cameraLookAt[0], globals.cameraLookAt[1], globals.cameraLookAt[2] + globals.cameraOffset],  // location
+					globals.cameraLookAt, // look-at
+					[0.0, 1.0, 0.0], // up vector
+					45.0, // vfov
+					globals.canvas.ctx.viewportWidth / globals.canvas.ctx.viewportHeight, // aspect
+					1.0, // near
+					1000.0); // far
+
+				globals.camera.rotateEye(degToRad(globals.cameraRotation.y), [1, 0, 0]);		    	
+				globals.camera.rotateEye(degToRad(globals.cameraRotation.x), [0, 1, 0]);		    			    	
+		    }
+
+		    function initGL()
+		    {
+		    	// Init canvas
+				globals.canvas = document.getElementById("canvas");
+				globals.canvas.width = window.innerWidth;
+				globals.canvas.height = window.innerHeight;
+				globals.canvas.ctx = globals.canvas.getContext('webgl');
+
+
+				if(!globals.canvas.ctx)
+				{
+					throw "Failed initializing WebGL";
+				}			
+
+				globals.canvas.addEventListener("mousedown", onMouseDown, false);
+				globals.canvas.addEventListener("mouseup", onMouseUp, false);				
+				globals.canvas.addEventListener("mousemove", onMouseMove, false);	
+				globals.canvas.addEventListener("mousewheel", onMouseWheel, false);		
+
+				// Initialize camera
+				//updateCamera();
+		    }
+
+			function initShaders()
+			{
+				var gl = globals.canvas.ctx;
+
+				loadShaderProgram(
+					gl, 
+					'pyramids.vs', 
+					'pyramids.fs',
+					function (shaderProgram) {
+						shaderProgram.aVertexPosition = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+						shaderProgram.uResolution = gl.getUniformLocation(shaderProgram, "uResolution");     
+						shaderProgram.uLightDir = gl.getUniformLocation(shaderProgram, "uLightDir");
+						shaderProgram.uCamEye = gl.getUniformLocation(shaderProgram, "uCamEye");
+						shaderProgram.uCamFowward = gl.getUniformLocation(shaderProgram, "uCamFowward");
+						shaderProgram.uCamRight = gl.getUniformLocation(shaderProgram, "uCamRight");
+						shaderProgram.uCamUp = gl.getUniformLocation(shaderProgram, "uCamUp");
+						shaderProgram.uVFov = gl.getUniformLocation(shaderProgram, "uVFov");
+						shaderProgram.elapsedTime = gl.getUniformLocation(shaderProgram, "elapsedTime");
+
+				        globals.shader = shaderProgram;
+					},
+ 					function (msg) {
+				    	alert(msg);
+					}
+				);				
+			}
+
+			function initGui()
+			{
+/*
+		        var menu = 
+		        {
+		        	numIterations : globals.ITERATIONS / 2
+		        }
+
+		        var gui = new dat.GUI();
+				gui.close();		        
+
+		        gui.add(menu, 'numIterations', 1, globals.ITERATIONS)
+		        	.step(1)
+		        	.onChange(function(value) {
+		        		globals.ITERATIONS = value;
+		        	});
+
+
+		        var url = window.location.href;
+		        var qparts = url.split("?");
+		        if(qparts.length > 0) {
+		        	console.log(qparts[0]);
+		        }
+*/		        
+			}
+
+		    function tick()
+		    { 
+		   		var timeNow = new Date().getTime();
+		   		if(globals.lastTime == 0)
+		   			globals.lastTime = timeNow;
+
+		   		globals.elapsedTime = (timeNow - globals.lastTime) / 1000;
+		   		globals.lastTime = timeNow;
+		   		globals.currentTime += globals.elapsedTime;
+
+				if(loadShaderProgram.remainingPrograms == 0) {
+		    		
+					keyboard.Update();
+
+					updateCamera(globals.elapsedTime);
+
+		    		drawScene();
+		    	}
+
+		    	requestAnimFrame(tick);		    	
+		    }	
+
+		    function drawScene()
+		    {
+				var gl = globals.canvas.ctx;
+
+		    	// Disable depth test
+		    	gl.disable(gl.DEPTH_TEST); 		    	
+        		// Setup viewport
+		    	gl.viewport(0, 0, globals.canvas.width, globals.canvas.height);
+				//console.log("Viewport " + globals.canvas.width + "x" + globals.canvas.height);
+		    	// Clear render target
+		    	gl.clearColor(0.0, 0.0, 0.0, 1.0);
+		    	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    		    	
+
+		    	// Set geometry
+        		globals.quad.apply(globals.shader.aVertexPosition); 	
+
+		    	// Set the shader program
+        		gl.useProgram(globals.shader);
+        		// Set unofirms
+				gl.uniform3fv(globals.shader.uResolution, [globals.canvas.width, globals.canvas.height, globals.canvas.height / globals.canvas.width]);
+				gl.uniform3fv(globals.shader.uLightDir, globals.LIGHT_DIR);
+				gl.uniform3fv(globals.shader.uCamEye, globals.camera.vecLocation);
+				gl.uniform3fv(globals.shader.uCamFowward, globals.camera.getForwardAxis());
+				gl.uniform3fv(globals.shader.uCamRight, globals.camera.getRightAxis());
+				gl.uniform3fv(globals.shader.uCamUp, globals.camera.getUpAxis());
+				gl.uniform1f(globals.shader.uVFov, globals.camera.vfov);
+				gl.uniform1f(globals.shader.elapsedTime, globals.currentTime);
+
+
+				// Draw the quad
+		        gl.drawArrays(gl.TRIANGLES, 0, 6);		        		
+		    }		
+
+		    function resizeCanvas()
+		    {
+		    	//console.log("resize");
+		    	initGL();
+		    }		    
+
+		    function onMouseDown(event)
+		    {
+		    	++globals.mouseDown[event.button];
+
+		    	globals.mouseCursorLocation.x = event.pageX;
+		    	globals.mouseCursorLocation.y = event.pageY;
+		    }
+
+		    function onMouseUp(event)
+		    {
+		    	--globals.mouseDown[event.button];
+		    }		    
+
+		    function onMouseMove(event)
+		    {
+				var mx = (event.pageX - globals.mouseCursorLocation.x) / globals.canvas.width;
+				var my = (event.pageY - globals.mouseCursorLocation.y) / globals.canvas.height;
+
+		    	if(globals.mouseDown[0] > 0)
+		    	{
+		    		globals.cameraRotation.x -= mx * 360.0;
+		    		globals.cameraRotation.y += my * 180.0;
+		    	}
+
+		    	if(globals.mouseDown[1] > 0)
+		    	{		    		
+		    		globals.cameraLookAt[0] += mx * 10.0;
+		    		globals.cameraLookAt[1] += my * 10.0;
+		    	}
+		    	
+		    	globals.mouseCursorLocation.x = event.pageX;
+		    	globals.mouseCursorLocation.y = event.pageY;		    				    	
+		    }
+
+		    function onMouseWheel(event)
+		    {		    	
+/*		    	
+		    	//console.log("mousewheel " + event.wheelDelta);
+		    	globals.ZOOM += globals.ZOOM * (event.wheelDelta / 120) / 25;
+*/		    	
+		    }
+
+		</script>
+
+
+		<body onload="main();">
+			<canvas id="canvas">Your browser doen't support canvas</canvas>
+		</body>		
+		<body onresize="resizeCanvas()">
+			<canvas id="canvas">Your browser doen't support canvas</canvas>
+		</body>		
+
+	</head>
+</html>

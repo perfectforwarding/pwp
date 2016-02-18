@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+	<head>
+
+		<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+  		<title>Water</title>		
+
+		<style>
+		
+		html, body {
+		    width: 100%;
+		    height: 100%;
+		    margin: 0px;
+		    border: 0;
+		    overflow: hidden; /*  Disable scrollbars */
+		    display: block;  /* No floating content on sides */
+		}
+
+		</style>
+
+		<!-- Additional libs -->
+		<script type="text/javascript" src="../../lib/thrak/utils.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/shaders.js"></script>
+		<script type="text/javascript" src="../../lib/dat-gui/dat.gui.min.js"></script>		
+		<script type="text/javascript" src="../../lib/thrak/external/gl-matrix.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/camera.js"></script>
+		<script type="text/javascript" src="../../lib/thrak/keyboard.js"></script>
+
+		<script type="text/javascript">
+
+			//--- Initialize globals
+			var globals = {};
+
+			globals.mouseCursorLocation = { x : 0, y : 0 };
+			globals.mouseDown = [0, 0, 0];
+
+			globals.lastTime = 0;
+			globals.elapsedTime = 0;
+			globals.currentTime = 0;
+
+			globals.crateTexture = {};		
+			globals.frameBuffer = Array();	
+			globals.simBuffer = 0;
+
+		    function main() 
+		    {
+		    	initGL();
+		    	globals.crateTexture = CreateTexture("crate.gif", function(texture) {
+		    		globals.frameBuffer[0] = initRenderTargetTexture(globals.canvas.ctx, texture);
+		    		globals.frameBuffer[1] = initRenderTarget(globals.canvas.ctx, texture.image.width, texture.image.height);
+		    	});
+				initShaders();
+				globals.quad = new CreateFullScreenQuad(globals.canvas.ctx);
+
+				if(!exists_url_part("preview")) 
+				{
+					keyboard.Initialize();
+					keyboard.TrackState(keyboard.key_code.w);
+					keyboard.TrackState(keyboard.key_code.s);
+					keyboard.TrackState(keyboard.key_code.a);
+					keyboard.TrackState(keyboard.key_code.d);
+					initGui();
+				}
+
+				tick();
+		    }
+
+		    function initGL()
+		    {
+		    	// Init canvas
+				globals.canvas = document.getElementById("canvas");
+				globals.canvas.width = window.innerWidth;
+				globals.canvas.height = window.innerHeight;
+				globals.canvas.ctx = globals.canvas.getContext('webgl');
+
+
+				if(!globals.canvas.ctx)
+				{
+					throw "Failed initializing WebGL";
+				}			
+
+				globals.canvas.addEventListener("mousedown", onMouseDown, false);
+				globals.canvas.addEventListener("mouseup", onMouseUp, false);				
+				globals.canvas.addEventListener("mousemove", onMouseMove, false);	
+				globals.canvas.addEventListener("mousewheel", onMouseWheel, false);		
+
+				// Initialize camera
+				//updateCamera();
+		    }
+
+			function initShaders()
+			{
+
+				var gl = globals.canvas.ctx;
+
+				loadShaderProgram(
+					gl, 
+					'forward.vs', 
+					'watersim.fs',
+					function (shaderProgram) {
+						// attributes
+						shaderProgram.aVertexPosition = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+						shaderProgram.aTextureCoord = gl.getAttribLocation(shaderProgram, "aTextureCoord");
+						// uniforms
+						shaderProgram.texture = gl.getUniformLocation(shaderProgram, "uSampler");
+						shaderProgram.uResolution = gl.getUniformLocation(shaderProgram, "uResolution");     
+						shaderProgram.elapsedTime = gl.getUniformLocation(shaderProgram, "elapsedTime");
+
+				        globals.watersim = shaderProgram;
+					},
+ 					function (msg) {
+				    	alert(msg);
+					}
+				);				
+
+				loadShaderProgram(
+					gl, 
+					'forward.vs', 
+					'copy.fs',
+					function (shaderProgram) {
+						// attributes
+						shaderProgram.aVertexPosition = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+						shaderProgram.aTextureCoord = gl.getAttribLocation(shaderProgram, "aTextureCoord");
+						// uniforms
+						shaderProgram.texture = gl.getUniformLocation(shaderProgram, "uSampler");
+						//shaderProgram.uResolution = gl.getUniformLocation(shaderProgram, "uResolution");     
+						//shaderProgram.elapsedTime = gl.getUniformLocation(shaderProgram, "elapsedTime");
+
+				        globals.present = shaderProgram;
+					},
+ 					function (msg) {
+				    	alert(msg);
+					}
+				);								
+			}
+
+			function initGui()
+			{
+/*
+		        var menu = 
+		        {
+		        	numIterations : globals.ITERATIONS / 2
+		        }
+
+		        var gui = new dat.GUI();
+				gui.close();		        
+
+		        gui.add(menu, 'numIterations', 1, globals.ITERATIONS)
+		        	.step(1)
+		        	.onChange(function(value) {
+		        		globals.ITERATIONS = value;
+		        	});
+
+
+		        var url = window.location.href;
+		        var qparts = url.split("?");initTextures
+		        if(qparts.length > 0) {
+		        	console.log(qparts[0]);
+		        }
+*/		        
+			}
+
+		    // 
+		    function CreateTexture(textureFilename, loadedCallback)
+		    {
+		    	var gl = globals.canvas.ctx;
+
+		    	texture = gl.createTexture();
+		    	texture.image = new Image();
+		    	texture.ready = false;
+
+		    	texture.image.onload = function()
+		    	{
+		    		handleLoadedTexture(texture, loadedCallback);
+		    	}
+
+		    	texture.image.src = textureFilename;		    			    	
+
+		    	return texture;
+		    }
+
+		    // 
+		    function handleLoadedTexture(texture, loadedCallback)
+		    {
+		    	var gl = globals.canvas.ctx;
+
+		    	gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+		    	gl.bindTexture(gl.TEXTURE_2D, texture);
+		    	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.image);
+		    	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+		    	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+		    	//gl.generateMipmap(gl.TEXTURE_2D);
+
+		    	gl.bindTexture(gl.TEXTURE_2D, null);
+
+		    	texture.ready = true;		    	
+
+		    	if(loadedCallback != undefined)
+		    	{
+		    		loadedCallback(texture);
+		    	}
+
+				//initRenderTargetTexture(gl, texture);
+		    }
+
+		    function tick()
+		    { 
+		   		var timeNow = new Date().getTime();
+		   		if(globals.lastTime == 0)
+		   			globals.lastTime = timeNow;
+
+		   		// Initialize timer
+		   		globals.elapsedTime = (timeNow - globals.lastTime) / 1000;
+		   		globals.lastTime = timeNow;
+		   		globals.currentTime += globals.elapsedTime;
+
+				if(globals.crateTexture.ready && (loadShaderProgram.remainingPrograms == 0)) {
+		    		
+					keyboard.Update();
+					sim();
+		    		drawScene();
+		    	}
+
+		    	requestAnimFrame(tick);		    	
+		    }	
+
+		    function sim()
+		    {
+		    	var src = globals.frameBuffer[globals.simBuffer];
+		    	var dst = globals.frameBuffer[(globals.simBuffer + 1) % 2];
+
+		    	console.log(!globals.simBuffer);
+
+		    	var gl = globals.canvas.ctx;
+		    	// Disable depth test
+		    	gl.disable(gl.DEPTH_TEST);
+
+		    	// Set the framebuffer
+		    	gl.bindFramebuffer(gl.FRAMEBUFFER, dst.frameBuffer);
+		    	gl.viewport(0, 0, dst.width, dst.height);
+		    	gl.clearColor(0.0, 0.0, 0.0, 1.0);
+		    	gl.clear(gl.COLOR_BUFFER_BIT);    		    	
+		    	// Set geometry (screen quad)
+        		globals.quad.apply(globals.watersim.aVertexPosition, globals.watersim.aTextureCoord); 
+
+				gl.activeTexture(gl.TEXTURE0);	
+				gl.bindTexture(gl.TEXTURE_2D, src.texture);
+
+				gl.useProgram(globals.watersim);	  
+        		// Set unofirms
+        		console.log(src.width);
+				gl.uniform2fv(globals.watersim.uResolution, [src.width, src.height]);
+				gl.uniform1f(globals.watersim.elapsedTime, globals.currentTime);				
+
+				// Draw the quad
+		        gl.drawArrays(gl.TRIANGLES, 0, 6);		       
+
+		        globals.simBuffer = (globals.simBuffer + 1) % 2; 						
+		    }
+
+		    function drawScene()
+		    {
+		    	var src = globals.frameBuffer[globals.simBuffer];
+
+				var gl = globals.canvas.ctx;
+
+				gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+		    	// Disable depth test
+		    	gl.disable(gl.DEPTH_TEST); 		    	
+        		
+		    	gl.viewport(0, 0, globals.canvas.width, globals.canvas.height);
+				//console.log("Viewport " + globals.canvas.width + "x" + globals.canvas.height);
+		    	// Clear render target
+		    	gl.clearColor(0.0, 0.0, 0.0, 1.0);
+		    	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    		    	
+
+		    	// Set geometry (screen quad)
+        		globals.quad.apply(globals.present.aVertexPosition, globals.present.aTextureCoord); 	
+        		// Set textures
+		        gl.activeTexture(gl.TEXTURE0);
+		        gl.bindTexture(gl.TEXTURE_2D, src.texture);        		
+		    	// Set the shader program
+        		gl.useProgram(globals.present);
+        		// Set unofirms
+				//gl.uniform3fv(globals.shader.uResolution, [globals.canvas.width, globals.canvas.height, globals.canvas.height / globals.canvas.width]);
+				//gl.uniform1f(globals.shader.elapsedTime, globals.currentTime);
+
+				// Draw the quad
+		        gl.drawArrays(gl.TRIANGLES, 0, 6);		        		
+		    }		
+
+		    function resizeCanvas()
+		    {
+		    	//console.log("resize");
+		    	initGL();
+		    }		    
+
+		    function onMouseDown(event)
+		    {
+		    	++globals.mouseDown[event.button];
+
+		    	globals.mouseCursorLocation.x = event.pageX;
+		    	globals.mouseCursorLocation.y = event.pageY;
+		    }
+
+		    function onMouseUp(event)
+		    {
+		    	--globals.mouseDown[event.button];
+		    }		    
+
+		    function onMouseMove(event)
+		    {
+				var mx = (event.pageX - globals.mouseCursorLocation.x) / globals.canvas.width;
+				var my = (event.pageY - globals.mouseCursorLocation.y) / globals.canvas.height;
+
+		    	if(globals.mouseDown[0] > 0)
+		    	{
+		    	}
+
+		    	if(globals.mouseDown[1] > 0)
+		    	{		    		
+		    	}
+		    	
+		    	globals.mouseCursorLocation.x = event.pageX;
+		    	globals.mouseCursorLocation.y = event.pageY;		    				    	
+		    }
+
+		    function onMouseWheel(event)
+		    {		    	
+/*		    	
+		    	//console.log("mousewheel " + event.wheelDelta);
+		    	globals.ZOOM += globals.ZOOM * (event.wheelDelta / 120) / 25;
+*/		    	
+		    }
+
+		</script>
+
+
+		<body onload="main();">
+			<canvas id="canvas">Your browser doen't support canvas</canvas>
+		</body>		
+		<body onresize="resizeCanvas()">
+			<canvas id="canvas">Your browser doen't support canvas</canvas>
+		</body>		
+
+	</head>
+</html>
