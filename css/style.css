@@ -14,12 +14,15 @@ html, body  {
 
 h1 {
     color: #eeeeee;
+    z-index: 2;
 }
+
+canvas{ position: absolute; z-index: 1 }
 
 .shaderPreview
 {
-    width: 10%;
-    height: 10%;
+    width: 20%;
+    height: 20%;
 
     display: block;
     /*background-color: #0000ff;*/
@@ -31,4 +34,5 @@ h1 {
     margin: 0px;
     /*border-radius: 8px;*/
     /*border: "1px solid #606060";*/
+    z-index: 2;
 }

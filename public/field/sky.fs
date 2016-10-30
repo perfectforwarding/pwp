@@ -21,7 +21,7 @@ void main(void)
 
 	// Map -1 -> 1, bottom to top
 	float x = (xy.y * 2.0) - 1.0;
-	x -= uEyeDir.y;
+	x += uEyeDir.y;
 
 	//float topMix = pow(clamp(x, 0.0, 1.0), 0.5);
 	float topMix = clamp(pow(x, 0.5), 0.0, 1.0);

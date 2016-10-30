@@ -221,7 +221,7 @@ vec3 computeColor(vec3 ro, vec3 rd)
 		// Lit
 		vec3 H = normalize(uLightDir + rd); // half vector
 
-		color *= vec3(max(-dot(normal, uLightDir), 0.0)); // diffuse
+		color *= vec3(max(-dot(normal, uLightDir), 0.1)); // diffuse
 		color += pow(clamp(-dot(normal, H), 0.0, 1.0), 100.0) * 2.0;
 
 		color *= vec3(s);

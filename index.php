@@ -8,7 +8,10 @@
 
 	<link rel="stylesheet" type="text/css" href="./css/style.css"/>
 
+	<script type="text/javascript" src="./lib/thrak/utils.js"></script>
+	<script type="text/javascript" src="./lib/thrak/shaders.js"></script>
 	<script type="text/javascript" src="./js/page_start.js"></script>
+
 
 <!--
 	<style>
@@ -26,8 +29,10 @@
 
 <body onload="pageInit()" onresize="pageResize()">
 
+<canvas id="canvas">Your browser dosn't support canvas</canvas>
+
 <center>
-<h1 >PHP5 & WebGL experiments</h1>
+<h1>HTML5 & WebGL experiments</h1>
 <div style="height: 10vh;" ></div>
 </center>
 

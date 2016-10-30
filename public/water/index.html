@@ -230,7 +230,7 @@
 		    	var src = globals.frameBuffer[globals.simBuffer];
 		    	var dst = globals.frameBuffer[(globals.simBuffer + 1) % 2];
 
-		    	console.log(!globals.simBuffer);
+		    	//console.log(!globals.simBuffer);
 
 		    	var gl = globals.canvas.ctx;
 		    	// Disable depth test
@@ -249,7 +249,7 @@
 
 				gl.useProgram(globals.watersim);	  
         		// Set unofirms
-        		console.log(src.width);
+        		//console.log(src.width);
 				gl.uniform2fv(globals.watersim.uResolution, [src.width, src.height]);
 				gl.uniform1f(globals.watersim.elapsedTime, globals.currentTime);				
 

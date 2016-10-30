@@ -36,20 +36,20 @@
 
 			globals.mouseCursorLocation = { x : 0, y : 0 };
 			globals.cameraRotation = { x : 0, y : 0 };
-			globals.cameraLookAt = vec3.createFrom(1.0, 0.0, 0.0);
-			globals.cameraOffset = -10.0;
-			globals.cameraMovement = vec3.create();
+			globals.cameraLocation = vec3.createFrom(0.0, 10.0, 0.0);
 
 			globals.mouseDown = [0, 0, 0];
 
 			globals.lastTime = 0;
 			globals.elapsedTime = 0;
 			globals.currentTime = 0;
+
+			globals.moveSpeed = 5;
 			
 			function onKeyForward()
 			{
 				var axis = globals.camera.getForwardAxis();
-				axis[1] = 0.0;
+				//axis[1] = 0.0;
 				vec3.normalize(axis);				
 				return axis;
 			}
@@ -83,10 +83,6 @@
 				if(!exists_url_part("preview")) 
 				{
 					keyboard.Initialize();
-					keyboard.TrackState(keyboard.key_code.w);
-					keyboard.TrackState(keyboard.key_code.s);
-					keyboard.TrackState(keyboard.key_code.a);
-					keyboard.TrackState(keyboard.key_code.d);
 					initGui();
 				}
 
@@ -96,6 +92,7 @@
 		    function updateCamera(elapsed)
 		    {
 		    	var movement = vec3.create();
+		    	var moveSpeed = globals.moveSpeed;
 		    	if(keyboard.IsPressed(keyboard.key_code.w))
 		    	{
 					vec3.add(movement, onKeyForward());
@@ -111,22 +108,28 @@
 		    	if(keyboard.IsPressed(keyboard.key_code.a))
 		    	{
 					vec3.add(movement, onKeyLeft());
-		    	}		    			    			    	
+		    	}
+		    	if(keyboard.IsPressed(keyboard.key_code.shift))
+		    	{
+		    		moveSpeed *= 5;
+		    	}
 
-		    	vec3.scale(movement, elapsed * 5);
-		    	vec3.add(globals.cameraLookAt, movement);
+		    	vec3.scale(movement, elapsed * moveSpeed);
+		    	vec3.add(globals.cameraLocation, movement);
 
 				globals.camera = new Camera(
-					[globals.cameraLookAt[0], globals.cameraLookAt[1], globals.cameraLookAt[2] + globals.cameraOffset],  // location
-					globals.cameraLookAt, // look-at
+					globals.cameraLocation,		// location
+					[globals.cameraLocation[0], globals.cameraLocation[1], globals.cameraLocation[2] - 1.0], 		// look-at
 					[0.0, 1.0, 0.0], // up vector
 					45.0, // vfov
 					globals.canvas.ctx.viewportWidth / globals.canvas.ctx.viewportHeight, // aspect
 					1.0, // near
 					1000.0); // far
 
-				globals.camera.rotateEye(degToRad(globals.cameraRotation.y), [1, 0, 0]);		    	
-				globals.camera.rotateEye(degToRad(globals.cameraRotation.x), [0, 1, 0]);		    			    	
+				globals.camera.rotateLookAt(degToRad(globals.cameraRotation.y), [1, 0, 0]);
+				globals.camera.rotateLookAt(degToRad(globals.cameraRotation.x), [0, 1, 0]);
+
+				//console.log(globals.camera.vecLookAt);				
 		    }
 
 		    function initGL()
@@ -287,13 +290,14 @@
 		    	if(globals.mouseDown[0] > 0)
 		    	{
 		    		globals.cameraRotation.x -= mx * 360.0;
-		    		globals.cameraRotation.y += my * 180.0;
+		    		globals.cameraRotation.y -= my * 180.0;
+		    		globals.cameraRotation.y = clamp(globals.cameraRotation.y, -89, 89);
 		    	}
 
 		    	if(globals.mouseDown[1] > 0)
 		    	{		    		
-		    		globals.cameraLookAt[0] += mx * 10.0;
-		    		globals.cameraLookAt[1] += my * 10.0;
+		    		//globals.cameraLocation[0] += mx * 10.0;
+		    		globals.cameraLocation[1] += my * 10.0;		    		
 		    	}
 		    	
 		    	globals.mouseCursorLocation.x = event.pageX;

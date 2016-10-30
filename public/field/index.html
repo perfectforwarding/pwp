@@ -788,8 +788,8 @@
 
 		    	// Set quad vb
 		    	gl.bindBuffer(gl.ARRAY_BUFFER, fullScreenQuad.vb);
-		        gl.vertexAttribPointer(copyShaderProgram.vertexPositionAttribute, 2, gl.FLOAT, false, 4 * 4, 0);
-		        gl.vertexAttribPointer(copyShaderProgram.textureCoordAttribute, 2, gl.FLOAT, false, 4 * 4, 2 * 4);
+		        gl.vertexAttribPointer(skyShaderProgram.vertexPositionAttribute, 2, gl.FLOAT, false, 4 * 4, 0);
+		        gl.vertexAttribPointer(skyShaderProgram.textureCoordAttribute, 2, gl.FLOAT, false, 4 * 4, 2 * 4);
 
 				// Set uniforms
 				gl.uniformMatrix4fv(skyShaderProgram.viewMatrix, false, camera.getViewMatrix());
@@ -814,17 +814,12 @@
 		    // Main draw function - Draw the field
 		    function drawScene() 
 		    {
-		    	//drawSky();
-		    	//drawField(null);
-
 				drawSky(frameBuffer0);
 		    	drawField(frameBuffer0);
 		    	horizontalBlurTexture(frameBuffer0.texture, frameBuffer0.width, frameBuffer1);
 		    	verticalBlurTexture(frameBuffer1.texture, frameBuffer1.height, frameBuffer2);
 
-		    	drawSky();
         		renderDof(frameBuffer0, frameBuffer2);
-        		
 		    }
 
 		    // Update rotation values
@@ -914,9 +909,9 @@
 		        var canvas = document.getElementById("canvas");
 		        initGL(canvas);
 		        //resizeCanvas();
-		        frameBuffer0 = initRenderTarget(canvas.width, canvas.height);
-		        frameBuffer1 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
-		        frameBuffer2 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
+		        frameBuffer0 = initRenderTarget(gl, canvas.width, canvas.height);
+		        frameBuffer1 = initRenderTarget(gl, canvas.width / 1.0, canvas.height / 1.0);
+		        frameBuffer2 = initRenderTarget(gl, canvas.width / 1.0, canvas.height / 1.0);
 		        initShaders();
 		        initFullScreenQuad();
 		        initGrassPatch();
@@ -941,7 +936,7 @@
 
 		    function resizeCanvas()
 		    {
-		    	console.log("resize");
+		    	//console.log("resize");
 		    	var canvas = document.getElementById("canvas");
 
 	    		canvas.width = window.innerWidth;
@@ -951,9 +946,9 @@
 				gl.viewportWidth = canvas.width;
 				gl.viewportHeight = canvas.height;
 
-		        frameBuffer0 = initRenderTarget(canvas.width, canvas.height);
-		        frameBuffer1 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);
-		        frameBuffer2 = initRenderTarget(canvas.width / 1.0, canvas.height / 1.0);    	
+		        frameBuffer0 = initRenderTarget(gl, canvas.width, canvas.height);
+		        frameBuffer1 = initRenderTarget(gl, canvas.width / 1.0, canvas.height / 1.0);
+		        frameBuffer2 = initRenderTarget(gl, canvas.width / 1.0, canvas.height / 1.0);    	
 		    }
 		</script>
 	</head>
